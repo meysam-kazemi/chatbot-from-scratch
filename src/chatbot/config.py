@@ -45,6 +45,15 @@ class Settings(BaseSettings):
     # Provider credentials
     openai_api_key: str | None = None
 
+    # Security
+    jwt_secret: str = Field(
+        default="development-only-secret-change-in-production",
+        min_length=32,
+    )
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = Field(default=15, ge=1, le=1440)
+    refresh_token_expire_days: int = Field(default=7, ge=1, le=30)
+
 
 @lru_cache
 def get_settings() -> Settings:
