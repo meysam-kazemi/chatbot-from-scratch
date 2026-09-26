@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 from chatbot.ai.agent import AgenticChatbot
 from chatbot.ai.memory import async_postgres_memory
 from chatbot.ai.tools import assistant_tools
+from chatbot.api.request_logging import log_request
 from chatbot.api.router import api_router
 from chatbot.db.database import database_pool
 from chatbot.logging import configure_logging
@@ -35,6 +36,7 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+app.middleware("http")(log_request)
 
 app.include_router(
     api_router,
