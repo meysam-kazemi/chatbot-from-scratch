@@ -18,6 +18,7 @@ class LoggingTest(unittest.TestCase):
         basic_config.assert_called_once_with(
             level="WARNING",
             format="%(asctime)s %(levelname)s %(name)s %(message)s",
+            force=True,
         )
 
     def test_application_logger_inherits_root_level(self):
