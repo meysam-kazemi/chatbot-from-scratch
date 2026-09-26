@@ -127,7 +127,15 @@ async def send_message(
     chatbot: Annotated[AgenticChatbot, Depends(get_chatbot)],
 ) -> MessageResponse:
     conversation = await owned_conversation(request, conversation_id, user)
-    answer = await chatbot.ainvoke(body.message, str(conversation_id))
+    answer = await chatbot.ainvoke(
+        body.message,
+        str(conversation_id),
+        context={
+            "user_id": str(user.id),
+            "conversation_id": str(conversation_id),
+            "db": request.app.state.db,
+        },
+    )
     title = body.message[:100] if conversation.title is None else None
     await conversations.touch(request.app.state.db, conversation_id, title)
     return MessageResponse(role="assistant", content=answer)

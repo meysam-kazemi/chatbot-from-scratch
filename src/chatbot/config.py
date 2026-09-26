@@ -44,6 +44,12 @@ class Settings(BaseSettings):
 
     # Provider credentials
     openai_api_key: str | None = None
+    tavily_api_key: str | None = None
+
+    # Agent tools
+    tool_workspace: str = ".chatbot-workspaces"
+    python_image: str = "python:3.13-alpine"
+    python_timeout_seconds: int = Field(default=10, ge=1, le=60)
 
     # Security
     jwt_secret: str = Field(

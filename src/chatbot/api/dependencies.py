@@ -5,6 +5,7 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from chatbot.ai.agent import AgenticChatbot
+from chatbot.ai.tools import assistant_tools
 from chatbot.db.models.user import User
 from chatbot.repositories.users import get_user
 from chatbot.security.tokens import get_user_id_from_token
@@ -14,7 +15,9 @@ bearer = HTTPBearer(auto_error=False)
 
 
 def get_chatbot(request: Request) -> AgenticChatbot:
-    return AgenticChatbot(checkpointer=request.app.state.memory)
+    return AgenticChatbot(
+        checkpointer=request.app.state.memory, tools=assistant_tools
+    )
 
 
 async def get_current_user(

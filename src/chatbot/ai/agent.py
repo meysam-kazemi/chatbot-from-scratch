@@ -10,6 +10,7 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
 
 from chatbot.ai.model import get_chat_model
+from chatbot.ai.tools import ToolContext
 
 
 Tool = BaseTool | Callable[..., Any] | dict[str, Any]
@@ -29,6 +30,7 @@ class AgenticChatbot:
             tools=tools,
             system_prompt=system_prompt,
             checkpointer=self.checkpointer,
+            context_schema=ToolContext,
         )
 
     def invoke(self, message: str, conversation_id: str = "default") -> str:
@@ -54,13 +56,19 @@ class AgenticChatbot:
     async def adelete_conversation(self, conversation_id: str) -> None:
         await self.checkpointer.adelete_thread(conversation_id)
 
-    async def ainvoke(self, message: str, conversation_id: str = "default") -> str:
+    async def ainvoke(
+        self,
+        message: str,
+        conversation_id: str = "default",
+        context: ToolContext | None = None,
+    ) -> str:
         if not message.strip():
             raise ValueError("message cannot be empty")
 
         result = await self.agent.ainvoke(
             {"messages": [{"role": "user", "content": message}]},
             config={"configurable": {"thread_id": conversation_id}},
+            context=context,
         )
         return result["messages"][-1].content
 
