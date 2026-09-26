@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 
 from chatbot.ai.memory import async_postgres_memory
 from chatbot.api.router import api_router
@@ -26,6 +28,10 @@ app.include_router(
     prefix="/api/v1",
 )
 
+
+@app.get("/", include_in_schema=False)
+async def index() -> FileResponse:
+    return FileResponse(Path(__file__).with_name("static") / "index.html")
 
 
 if __name__ == "__main__":
