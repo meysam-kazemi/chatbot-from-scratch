@@ -10,6 +10,7 @@ from chatbot.repositories import users
 from chatbot.schemas.auth import (
     Credentials,
     RefreshRequest,
+    RegisterRequest,
     TokenPair,
     UserResponse,
 )
@@ -44,12 +45,18 @@ async def issue_tokens(request: Request, user: User) -> TokenPair:
 @router.post(
     "/register", response_model=TokenPair, status_code=status.HTTP_201_CREATED
 )
-async def register(body: Credentials, request: Request) -> TokenPair:
+async def register(body: RegisterRequest, request: Request) -> TokenPair:
     user = await users.create_user(
-        request.app.state.db, str(body.email), hash_password(body.password)
+        request.app.state.db,
+        str(body.email),
+        body.username,
+        hash_password(body.password),
     )
     if user is None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Email is already registered")
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Email or username is already registered",
+        )
     return await issue_tokens(request, user)
 
 

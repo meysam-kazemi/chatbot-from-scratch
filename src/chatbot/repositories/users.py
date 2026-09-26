@@ -9,7 +9,10 @@ from chatbot.db.models.user import User
 
 
 async def create_user(
-    pool: AsyncConnectionPool, email: str, password_hash: str
+    pool: AsyncConnectionPool,
+    email: str,
+    username: str,
+    password_hash: str,
 ) -> User | None:
     user_id = uuid.uuid4()
     try:
@@ -17,10 +20,11 @@ async def create_user(
             row_factory=class_row(User)
         ) as cursor:
             await cursor.execute(
-                """INSERT INTO users (id, email, password_hash)
-                   VALUES (%s, %s, %s)
-                   RETURNING id, email, password_hash, is_active, created_at""",
-                (user_id, email, password_hash),
+                """INSERT INTO users (id, email, username, password_hash)
+                   VALUES (%s, %s, %s, %s)
+                   RETURNING id, email, username, password_hash,
+                             is_active, created_at""",
+                (user_id, email, username, password_hash),
             )
             return await cursor.fetchone()
     except errors.UniqueViolation:
@@ -32,7 +36,7 @@ async def get_user_by_email(pool: AsyncConnectionPool, email: str) -> User | Non
         row_factory=class_row(User)
     ) as cursor:
         await cursor.execute(
-            """SELECT id, email, password_hash, is_active, created_at
+            """SELECT id, email, username, password_hash, is_active, created_at
                FROM users WHERE email = %s""",
             (email,),
         )
@@ -44,7 +48,7 @@ async def get_user(pool: AsyncConnectionPool, user_id: uuid.UUID) -> User | None
         row_factory=class_row(User)
     ) as cursor:
         await cursor.execute(
-            """SELECT id, email, password_hash, is_active, created_at
+            """SELECT id, email, username, password_hash, is_active, created_at
                FROM users WHERE id = %s""",
             (user_id,),
         )

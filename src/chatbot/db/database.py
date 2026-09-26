@@ -10,10 +10,14 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY,
     email VARCHAR(320) NOT NULL UNIQUE,
+    username VARCHAR(30),
     password_hash VARCHAR(255) NOT NULL,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(30);
+CREATE UNIQUE INDEX IF NOT EXISTS users_username_key
+    ON users (LOWER(username)) WHERE username IS NOT NULL;
 CREATE TABLE IF NOT EXISTS refresh_tokens (
     token_hash CHAR(64) PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
