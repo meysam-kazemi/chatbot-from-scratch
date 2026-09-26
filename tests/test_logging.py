@@ -1,18 +1,21 @@
 import logging
+import subprocess
+import sys
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi import Response
 
 from chatbot.api.request_logging import log_request
-from chatbot.logging import configure_logging
+from chatbot.log_config import configure_logging
 
 
 class LoggingTest(unittest.TestCase):
-    @patch("chatbot.logging.logging.basicConfig")
+    @patch("chatbot.log_config.logging.basicConfig")
     def test_logging_uses_configured_level(self, basic_config):
-        with patch("chatbot.logging.settings.log_level", "WARNING"):
+        with patch("chatbot.log_config.settings.log_level", "WARNING"):
             configure_logging()
 
         basic_config.assert_called_once_with(
@@ -23,6 +26,22 @@ class LoggingTest(unittest.TestCase):
 
     def test_application_logger_inherits_root_level(self):
         self.assertIsInstance(logging.getLogger("chatbot"), logging.Logger)
+
+    def test_package_does_not_shadow_standard_logging(self):
+        package_directory = (
+            Path(__file__).parents[1] / "src" / "chatbot"
+        )
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import logging; assert hasattr(logging, 'getLogger')",
+            ],
+            cwd=package_directory,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 class RequestLoggingTest(unittest.IsolatedAsyncioTestCase):

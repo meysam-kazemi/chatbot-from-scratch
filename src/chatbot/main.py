@@ -11,7 +11,7 @@ from chatbot.ai.tools import assistant_tools
 from chatbot.api.request_logging import log_request
 from chatbot.api.router import api_router
 from chatbot.db.database import database_pool
-from chatbot.logging import configure_logging
+from chatbot.log_config import configure_logging
 
 
 logger = logging.getLogger(__name__)
