@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -9,10 +10,16 @@ from chatbot.ai.memory import async_postgres_memory
 from chatbot.ai.tools import assistant_tools
 from chatbot.api.router import api_router
 from chatbot.db.database import database_pool
+from chatbot.logging import configure_logging
+
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    configure_logging()
+    logger.info("application_starting")
     async with async_postgres_memory() as memory, database_pool() as db:
         app.state.memory = memory
         app.state.db = db
@@ -20,6 +27,7 @@ async def lifespan(app: FastAPI):
             checkpointer=memory, tools=assistant_tools
         )
         yield
+    logger.info("application_stopped")
 
 
 app = FastAPI(
