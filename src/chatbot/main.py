@@ -4,7 +4,9 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 
+from chatbot.ai.agent import AgenticChatbot
 from chatbot.ai.memory import async_postgres_memory
+from chatbot.ai.tools import assistant_tools
 from chatbot.api.router import api_router
 from chatbot.db.database import database_pool
 
@@ -14,6 +16,9 @@ async def lifespan(app: FastAPI):
     async with async_postgres_memory() as memory, database_pool() as db:
         app.state.memory = memory
         app.state.db = db
+        app.state.chatbot = AgenticChatbot(
+            checkpointer=memory, tools=assistant_tools
+        )
         yield
 
 

@@ -1,7 +1,9 @@
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from chatbot.main import app
+from chatbot.api.dependencies import get_chatbot
 
 
 class UITest(unittest.TestCase):
@@ -20,6 +22,13 @@ class UITest(unittest.TestCase):
         ).read_text()
         self.assertIn('id="auth-form"', html)
         self.assertIn('id="composer"', html)
+
+    def test_chatbot_dependency_reuses_app_instance(self):
+        chatbot = object()
+        request = SimpleNamespace(
+            app=SimpleNamespace(state=SimpleNamespace(chatbot=chatbot))
+        )
+        self.assertIs(get_chatbot(request), chatbot)
 
 
 if __name__ == "__main__":
