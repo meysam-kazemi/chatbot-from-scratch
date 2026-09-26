@@ -4,6 +4,7 @@ from typing import Any
 
 from langchain.agents import create_agent
 from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.tools import BaseTool
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
@@ -22,11 +23,12 @@ class AgenticChatbot:
         system_prompt: str = "You are a helpful assistant.",
         checkpointer: BaseCheckpointSaver | None = None,
     ) -> None:
+        self.checkpointer = checkpointer or InMemorySaver()
         self.agent = create_agent(
             model=model or get_chat_model(),
             tools=tools,
             system_prompt=system_prompt,
-            checkpointer=checkpointer or InMemorySaver(),
+            checkpointer=self.checkpointer,
         )
 
     def invoke(self, message: str, conversation_id: str = "default") -> str:
@@ -38,6 +40,19 @@ class AgenticChatbot:
             config={"configurable": {"thread_id": conversation_id}},
         )
         return result["messages"][-1].content
+
+    async def aget_messages(self, conversation_id: str) -> list[BaseMessage]:
+        state = await self.agent.aget_state(
+            {"configurable": {"thread_id": conversation_id}}
+        )
+        return [
+            message
+            for message in state.values.get("messages", [])
+            if isinstance(message, (HumanMessage, AIMessage))
+        ]
+
+    async def adelete_conversation(self, conversation_id: str) -> None:
+        await self.checkpointer.adelete_thread(conversation_id)
 
     async def ainvoke(self, message: str, conversation_id: str = "default") -> str:
         if not message.strip():
