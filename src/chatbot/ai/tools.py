@@ -3,7 +3,6 @@ import os
 import subprocess
 import urllib.request
 import uuid
-from pathlib import Path
 from typing import TypedDict
 
 from langchain.tools import ToolRuntime, tool
@@ -11,28 +10,13 @@ from psycopg_pool import AsyncConnectionPool
 
 from chatbot.config import settings
 from chatbot.repositories import conversations
+from chatbot.repositories.files import safe_path, workspace
 
 
 class ToolContext(TypedDict):
     user_id: str
     conversation_id: str
     db: AsyncConnectionPool
-
-
-def _workspace(context: ToolContext) -> Path:
-    root = Path(settings.tool_workspace).resolve()
-    workspace = root / context["user_id"] / context["conversation_id"]
-    workspace.mkdir(parents=True, exist_ok=True)
-    return workspace
-
-
-def _safe_path(workspace: Path, path: str) -> Path:
-    if not path or Path(path).is_absolute():
-        raise ValueError("Use a non-empty relative path")
-    resolved = (workspace / path).resolve()
-    if not resolved.is_relative_to(workspace):
-        raise ValueError("Path must stay inside the conversation workspace")
-    return resolved
 
 
 @tool
@@ -122,7 +106,9 @@ def run_python(code: str) -> str:
 def read_file(path: str, runtime: ToolRuntime[ToolContext]) -> str:
     """Read a UTF-8 text file from this conversation's private workspace."""
     try:
-        with _safe_path(_workspace(runtime.context), path).open() as source:
+        context = runtime.context
+        root = workspace(context["user_id"], context["conversation_id"])
+        with safe_path(root, path).open() as source:
             content = source.read(100_001)
         if len(content) > 100_000:
             return content[:100_000] + "\n[truncated]"
@@ -139,10 +125,14 @@ def write_file(
     if len(content) > 100_000:
         return "Could not write file: content exceeds 100,000 characters."
     try:
-        destination = _safe_path(_workspace(runtime.context), path)
+        context = runtime.context
+        root = workspace(context["user_id"], context["conversation_id"])
+        generated = root / "generated"
+        generated.mkdir(exist_ok=True)
+        destination = safe_path(generated, path)
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(content)
-        return f"Wrote {len(content)} characters to {path}."
+        return f"Wrote {len(content)} characters to generated/{path}."
     except (OSError, UnicodeError, ValueError) as exc:
         return f"Could not write file: {exc}"
 

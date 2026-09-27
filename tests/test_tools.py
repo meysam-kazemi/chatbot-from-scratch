@@ -9,7 +9,8 @@ from langchain_core.language_models.fake_chat_models import (
 from langchain_core.messages import AIMessage
 
 from chatbot.ai.agent import AgenticChatbot
-from chatbot.ai.tools import _safe_path, _workspace, write_file
+from chatbot.ai.tools import write_file
+from chatbot.repositories.files import safe_path, workspace
 
 
 class ToolCallingFakeModel(FakeMessagesListChatModel):
@@ -22,11 +23,9 @@ class ToolTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch(
             "chatbot.ai.tools.settings.tool_workspace", directory
         ):
-            workspace = _workspace(
-                {"user_id": "user", "conversation_id": "conversation"}
-            )
+            root = workspace("user", "conversation")
             self.assertEqual(
-                _safe_path(workspace, "notes/result.txt"),
+                safe_path(root, "notes/result.txt"),
                 Path(directory).resolve()
                 / "user"
                 / "conversation"
@@ -34,7 +33,7 @@ class ToolTest(unittest.TestCase):
                 / "result.txt",
             )
             with self.assertRaises(ValueError):
-                _safe_path(workspace, "../../secret.txt")
+                safe_path(root, "../../secret.txt")
 
 
 class ToolRuntimeTest(unittest.IsolatedAsyncioTestCase):
@@ -75,6 +74,7 @@ class ToolRuntimeTest(unittest.IsolatedAsyncioTestCase):
                     Path(directory)
                     / "user"
                     / "conversation"
+                    / "generated"
                     / "result.txt"
                 ).read_text(),
                 "ok",

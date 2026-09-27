@@ -1,18 +1,30 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
+from fastapi.responses import FileResponse as FileDownloadResponse
 from langchain_core.messages import AIMessage
 
 from chatbot.ai.agent import AgenticChatbot
 from chatbot.api.dependencies import get_chatbot, get_current_user
 from chatbot.db.models.user import User
-from chatbot.repositories import conversations
+from chatbot.repositories import conversations, files
 from chatbot.schemas.chat import (
     ConversationCreate,
     ConversationHistory,
     ConversationResponse,
     ConversationUpdate,
+    FileResponse,
     MessageResponse,
     SendMessageRequest,
 )
@@ -87,8 +99,76 @@ async def delete_conversation(
         request.app.state.db, conversation_id, user.id
     ):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Conversation not found")
-    await chatbot.adelete_conversation(str(conversation_id))
+    root = files.workspace(user.id, conversation_id)
+    try:
+        await chatbot.adelete_conversation(str(conversation_id))
+    finally:
+        files.delete_workspace(root)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/conversations/{conversation_id}/files",
+    response_model=list[FileResponse],
+)
+async def list_conversation_files(
+    conversation_id: UUID,
+    request: Request,
+    user: Annotated[User, Depends(get_current_user)],
+):
+    await owned_conversation(request, conversation_id, user)
+    return files.list_files(files.workspace(user.id, conversation_id))
+
+
+@router.post(
+    "/conversations/{conversation_id}/files",
+    response_model=FileResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_conversation_file(
+    conversation_id: UUID,
+    request: Request,
+    user: Annotated[User, Depends(get_current_user)],
+    file: Annotated[UploadFile, File()],
+):
+    await owned_conversation(request, conversation_id, user)
+    try:
+        return await files.save_upload(
+            files.workspace(user.id, conversation_id), file
+        )
+    except FileExistsError:
+        raise HTTPException(status.HTTP_409_CONFLICT, "File already exists")
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
+
+
+@router.get("/conversations/{conversation_id}/files/{file_path:path}")
+async def get_conversation_file(
+    conversation_id: UUID,
+    file_path: str,
+    request: Request,
+    user: Annotated[User, Depends(get_current_user)],
+):
+    await owned_conversation(request, conversation_id, user)
+    try:
+        root = files.workspace(user.id, conversation_id)
+        path = files.safe_path(root, file_path)
+    except ValueError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
+    if not path.is_file():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
+    info = files.describe(path, root)
+    media_type = info["content_type"]
+    headers = {"X-Content-Type-Options": "nosniff"}
+    if media_type.startswith("text/"):
+        return FileDownloadResponse(
+            path, media_type="text/plain", headers=headers
+        )
+    if media_type in {"image/gif", "image/jpeg", "image/png", "image/webp"}:
+        return FileDownloadResponse(path, media_type=media_type, headers=headers)
+    return FileDownloadResponse(
+        path, filename=path.name, media_type=media_type, headers=headers
+    )
 
 
 @router.get(

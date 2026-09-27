@@ -53,3 +53,10 @@ class MessageResponse(BaseModel):
 class ConversationHistory(BaseModel):
     conversation_id: UUID
     messages: list[MessageResponse]
+
+
+class FileResponse(BaseModel):
+    name: str
+    size: int
+    content_type: str
+    source: Literal["uploaded", "generated"]
