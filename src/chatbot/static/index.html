@@ -37,7 +37,7 @@
     .switch { margin-top: 18px; text-align: center; }
     .link { padding: 0; border: 0; background: none; color: #58a6ff; }
     .error { min-height: 22px; margin: 12px 0 0; color: #ff7b72; }
-    .shell { height: 100dvh; overflow: hidden; display: grid; grid-template-columns: 290px 1fr; }
+    .shell { height: 100dvh; overflow: hidden; display: grid; grid-template-columns: 290px minmax(0, 1fr) 260px; }
     aside {
       min-width: 0; min-height: 0; display: flex; flex-direction: column; padding: 16px;
       border-right: 1px solid #30363d; background: #161b22;
@@ -104,10 +104,39 @@
     .composer { padding: 16px max(20px, calc((100% - 800px) / 2)); border-top: 1px solid #30363d; }
     .composer textarea { min-height: 46px; max-height: 160px; resize: vertical; }
     .composer button { align-self: flex-end; }
+    .file-panel {
+      min-width: 0; min-height: 0; display: flex; flex-direction: column;
+      border-left: 1px solid #30363d; background: #161b22;
+    }
+    .file-panel h3 { margin: 0; padding: 20px 16px; border-bottom: 1px solid #30363d; }
+    .file-groups { min-height: 0; overflow-y: auto; padding: 14px; }
+    .file-group { margin-bottom: 22px; }
+    .file-group h4 { margin: 0 0 8px; color: #8b949e; font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; }
+    .file-list { display: grid; gap: 6px; }
+    .file-chip {
+      width: 100%; overflow: hidden; border: 1px solid #30363d; border-radius: 8px;
+      padding: 9px 10px; background: #21262d; color: inherit;
+      text-align: left; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .file-empty { color: #8b949e; font-size: .9rem; }
+    dialog {
+      width: min(760px, calc(100% - 32px)); max-height: 80vh; padding: 0;
+      border: 1px solid #30363d; border-radius: 14px; background: #161b22;
+      color: inherit;
+    }
+    dialog::backdrop { background: #000a; }
+    .preview-head { display: flex; align-items: center; gap: 10px; padding: 14px; border-bottom: 1px solid #30363d; }
+    .preview-head strong { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .preview-body { max-height: 60vh; overflow: auto; padding: 18px; }
+    .preview-body pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .preview-body img { display: block; max-width: 100%; margin: auto; }
     button:disabled { cursor: not-allowed; opacity: .55; }
     @media (max-width: 720px) {
-      .shell { grid-template-columns: 1fr; grid-template-rows: 220px minmax(0, 1fr); }
+      .shell { grid-template-columns: 1fr; grid-template-rows: 180px minmax(0, 1fr) 160px; }
       aside { border-right: 0; border-bottom: 1px solid #30363d; }
+      .file-panel { border-left: 0; border-top: 1px solid #30363d; }
+      .file-panel h3 { padding: 10px 14px; }
+      .file-groups { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 10px 14px; }
     }
   </style>
 </head>
@@ -144,11 +173,35 @@
       </header>
       <div id="messages" class="messages"><div class="empty">Create a conversation to start chatting.</div></div>
       <form id="composer" class="composer">
+        <input id="file-input" type="file" multiple hidden>
+        <button id="attach" class="secondary" type="button" disabled>Attach</button>
         <textarea id="message" aria-label="Message" placeholder="Type a message…" maxlength="20000" required disabled></textarea>
         <button id="send" class="primary" type="submit" disabled>Send</button>
       </form>
     </main>
+    <section class="file-panel" aria-label="Conversation files">
+      <h3>Files</h3>
+      <div class="file-groups">
+        <section class="file-group">
+          <h4>Uploaded</h4>
+          <div id="uploaded-files" class="file-list"><span class="file-empty">No uploaded files</span></div>
+        </section>
+        <section class="file-group">
+          <h4>Generated</h4>
+          <div id="generated-files" class="file-list"><span class="file-empty">No generated files</span></div>
+        </section>
+      </div>
+    </section>
   </section>
+
+  <dialog id="file-preview">
+    <div class="preview-head">
+      <strong id="preview-name"></strong>
+      <a id="download-file" class="link" download>Download</a>
+      <button id="close-preview" class="secondary" type="button">Close</button>
+    </div>
+    <div id="preview-body" class="preview-body"></div>
+  </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/marked@18.0.14/lib/marked.umd.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.16/dist/purify.min.js"></script>
@@ -158,6 +211,8 @@
     let registering = false;
     let currentConversation = null;
     let conversationList = [];
+    let pendingFiles = [];
+    let previewUrl = null;
 
     function tokens(value) {
       if (value) localStorage.setItem("tokens", JSON.stringify(value));
@@ -172,9 +227,11 @@
 
     async function request(path, options = {}, retry = true) {
       const saved = tokens();
-      const headers = { "Content-Type": "application/json", ...options.headers };
+      const { raw = false, ...fetchOptions } = options;
+      const headers = { ...fetchOptions.headers };
+      if (!(fetchOptions.body instanceof FormData)) headers["Content-Type"] = "application/json";
       if (saved?.access_token) headers.Authorization = `Bearer ${saved.access_token}`;
-      const response = await fetch(API + path, { ...options, headers });
+      const response = await fetch(API + path, { ...fetchOptions, headers });
       if (response.status === 401 && retry && saved?.refresh_token) {
         const refreshed = await fetch(API + "/auth/refresh", {
           method: "POST", headers: { "Content-Type": "application/json" },
@@ -191,7 +248,68 @@
         try { data = await response.json(); } catch {}
         throw new Error(errorText(data));
       }
+      if (raw) return response;
       return response.status === 204 ? null : response.json();
+    }
+
+    function filePath(name) {
+      return name.split("/").map(encodeURIComponent).join("/");
+    }
+
+    function renderFiles(files) {
+      for (const source of ["uploaded", "generated"]) {
+        const container = $(`${source}-files`);
+        const matching = files.filter((file) => file.source === source);
+        container.replaceChildren();
+        if (!matching.length) {
+          const empty = document.createElement("span");
+          empty.className = "file-empty";
+          empty.textContent = `No ${source} files`;
+          container.appendChild(empty);
+          continue;
+        }
+        for (const file of matching) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "file-chip";
+          button.textContent = `📎 ${file.name.split("/").pop()}`;
+          button.title = file.name;
+          button.onclick = () => previewFile(file);
+          container.appendChild(button);
+        }
+      }
+    }
+
+    async function loadFiles() {
+      if (!currentConversation) return renderFiles([]);
+      renderFiles(await request(`/chat/conversations/${currentConversation.id}/files`));
+    }
+
+    async function previewFile(file) {
+      const response = await request(
+        `/chat/conversations/${currentConversation.id}/files/${filePath(file.name)}`,
+        { raw: true }
+      );
+      const blob = await response.blob();
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      previewUrl = URL.createObjectURL(blob);
+      $("preview-name").textContent = file.name;
+      $("download-file").href = previewUrl;
+      $("download-file").download = file.name.split("/").pop();
+      $("preview-body").replaceChildren();
+      if (file.content_type.startsWith("image/") && file.content_type !== "image/svg+xml") {
+        const image = document.createElement("img");
+        image.src = previewUrl;
+        image.alt = file.name;
+        $("preview-body").appendChild(image);
+      } else if (file.content_type.startsWith("text/")) {
+        const text = document.createElement("pre");
+        text.textContent = await blob.text();
+        $("preview-body").appendChild(text);
+      } else {
+        $("preview-body").textContent = "Preview is unavailable for this file type. Download it to open it.";
+      }
+      $("file-preview").showModal();
     }
 
     function setAuthMode(register) {
@@ -296,6 +414,8 @@
       $("chat-title").textContent = conversation.title || "New conversation";
       $("message").disabled = false;
       $("send").disabled = false;
+      $("attach").disabled = false;
+      pendingFiles = [];
       $("messages").innerHTML = '<div class="empty">Loading…</div>';
       try {
         const history = await request(`/chat/conversations/${conversation.id}/messages`);
@@ -306,6 +426,7 @@
         $("messages").innerHTML = `<div class="empty"></div>`;
         $("messages").firstChild.textContent = error.message;
       }
+      try { await loadFiles(); } catch (error) { renderFiles([]); }
     }
 
     async function startApp() {
@@ -327,6 +448,7 @@
       }
       localStorage.removeItem("tokens");
       currentConversation = null;
+      renderFiles([]);
       showAuth();
     }
 
@@ -349,16 +471,40 @@
       $("message").focus();
     };
 
+    $("attach").onclick = () => $("file-input").click();
+    $("file-input").onchange = async () => {
+      try {
+        for (const file of $("file-input").files) {
+          const form = new FormData();
+          form.append("file", file);
+          const uploaded = await request(
+            `/chat/conversations/${currentConversation.id}/files`,
+            { method: "POST", body: form }
+          );
+          pendingFiles.push(uploaded.name);
+        }
+        await loadFiles();
+      } catch (error) {
+        alert(error.message);
+      } finally {
+        $("file-input").value = "";
+      }
+    };
+
     $("composer").onsubmit = async (event) => {
       event.preventDefault();
       const text = $("message").value.trim();
       if (!text || !currentConversation) return;
+      const prompt = pendingFiles.length
+        ? `${text}\n\nAttached files (use read_file if needed): ${pendingFiles.join(", ")}`
+        : text;
       $("message").value = "";
       $("send").disabled = true;
       addMessage("user", text);
       const waiting = addMessage("assistant", "Thinking…");
       try {
-        const answer = await request(`/chat/conversations/${currentConversation.id}/messages`, { method: "POST", body: JSON.stringify({ message: text }) });
+        const answer = await request(`/chat/conversations/${currentConversation.id}/messages`, { method: "POST", body: JSON.stringify({ message: prompt }) });
+        pendingFiles = [];
         renderMarkdown(waiting.querySelector(".bubble"), answer.content);
         if (!currentConversation.title) {
           currentConversation.title = text.slice(0, 100);
@@ -367,7 +513,11 @@
         }
       } catch (error) {
         waiting.querySelector(".bubble").textContent = `Error: ${error.message}`;
-      } finally { $("send").disabled = false; $("message").focus(); }
+      } finally {
+        $("send").disabled = false;
+        $("message").focus();
+        loadFiles().catch(() => {});
+      }
     };
 
     $("message").onkeydown = (event) => {
@@ -395,10 +545,19 @@
       $("chat-title").textContent = "Select a conversation";
       $("message").disabled = true;
       $("send").disabled = true;
+      $("attach").disabled = true;
+      pendingFiles = [];
+      renderFiles([]);
       $("messages").innerHTML = '<div class="empty">Create a conversation to start chatting.</div>';
       renderConversations();
       if (conversationList.length) await selectConversation(conversationList[0]);
     }
+
+    $("close-preview").onclick = () => $("file-preview").close();
+    $("file-preview").onclose = () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      previewUrl = null;
+    };
 
     $("logout").onclick = () => signOut();
     if (tokens()) startApp(); else showAuth();

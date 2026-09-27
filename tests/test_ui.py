@@ -33,6 +33,11 @@ class UITest(unittest.TestCase):
         self.assertIn("DOMPurify.sanitize(marked.parse(content)", html)
         self.assertIn("function renderMarkdownFallback", html)
         self.assertIn("line.match(/^(#{1,6})", html)
+        self.assertIn('id="file-input"', html)
+        self.assertIn('id="file-preview"', html)
+        self.assertIn('id="uploaded-files"', html)
+        self.assertIn('id="generated-files"', html)
+        self.assertIn("new FormData()", html)
 
     def test_chatbot_dependency_reuses_app_instance(self):
         chatbot = object()
