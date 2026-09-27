@@ -3,12 +3,16 @@ from unittest.mock import patch
 
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
-from chatbot.ai.agent import AgenticChatbot
+from chatbot.ai.agent import DEFAULT_SYSTEM_PROMPT, AgenticChatbot
 from chatbot.ai.memory import _postgres_dsn
 from chatbot.ai.model import get_chat_model, settings
 
 
 class AITest(unittest.TestCase):
+    def test_system_prompt_requests_direct_markdown(self):
+        self.assertIn("Emit Markdown directly", DEFAULT_SYSTEM_PROMPT)
+        self.assertIn("never wrap", DEFAULT_SYSTEM_PROMPT)
+
     def test_agent_returns_last_message_and_rejects_blank_input(self):
         chatbot = AgenticChatbot(model=FakeListChatModel(responses=["Hello!"]))
 
