@@ -38,6 +38,12 @@ class UITest(unittest.TestCase):
         self.assertIn('id="uploaded-files"', html)
         self.assertIn('id="generated-files"', html)
         self.assertIn("new FormData()", html)
+        self.assertIn('class="brand"', html)
+        self.assertIn('class="composer-area"', html)
+        self.assertIn('id="file-count"', html)
+        self.assertIn('id="toast"', html)
+        self.assertIn('avatar.className = "assistant-avatar"', html)
+        self.assertIn('$("message").oninput', html)
 
     def test_chatbot_dependency_reuses_app_instance(self):
         chatbot = object()

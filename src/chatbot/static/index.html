@@ -5,11 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Chatbot</title>
   <style>
-    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; }
+    :root {
+      color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      --page: #0b0f14; --panel: #111720; --raised: #171e28; --hover: #1d2632;
+      --border: #26303d; --muted: #8b98a9; --text: #e8edf4;
+      --accent: #5b8cff; --accent-hover: #70a0ff;
+    }
     * { box-sizing: border-box; }
-    body { margin: 0; overflow: hidden; background: #0d1117; color: #e6edf3; }
+    body { margin: 0; overflow: hidden; background: var(--page); color: var(--text); }
     button, input, textarea { font: inherit; }
-    button { cursor: pointer; }
+    button { cursor: pointer; transition: background .15s, color .15s, opacity .15s, transform .15s; }
+    button:active:not(:disabled) { transform: translateY(1px); }
+    * { scrollbar-width: thin; scrollbar-color: #334052 transparent; }
     .hidden { display: none !important; }
     .auth {
       min-height: 100vh; display: grid; place-items: center; padding: 24px;
@@ -20,7 +27,7 @@
       border-radius: 18px; background: #161b22; box-shadow: 0 20px 60px #0008;
     }
     h1, h2, p { margin-top: 0; }
-    .muted { color: #8b949e; }
+    .muted { color: var(--muted); }
     label { display: block; margin: 16px 0 6px; font-size: .9rem; }
     input, textarea {
       width: 100%; border: 1px solid #30363d; border-radius: 9px;
@@ -30,20 +37,30 @@
     .primary, .secondary {
       border: 0; border-radius: 9px; padding: 10px 14px; color: white;
     }
-    .primary { background: #238636; }
-    .primary:hover { background: #2ea043; }
-    .secondary { background: #30363d; }
+    .primary { background: var(--accent); }
+    .primary:hover { background: var(--accent-hover); }
+    .secondary { background: var(--hover); }
     .wide { width: 100%; margin-top: 20px; }
     .switch { margin-top: 18px; text-align: center; }
     .link { padding: 0; border: 0; background: none; color: #58a6ff; }
     .error { min-height: 22px; margin: 12px 0 0; color: #ff7b72; }
-    .shell { height: 100dvh; overflow: hidden; display: grid; grid-template-columns: 290px minmax(0, 1fr) 260px; }
+    .shell { height: 100dvh; overflow: hidden; display: grid; grid-template-columns: 270px minmax(420px, 1fr) 260px; }
     aside {
-      min-width: 0; min-height: 0; display: flex; flex-direction: column; padding: 16px;
-      border-right: 1px solid #30363d; background: #161b22;
+      min-width: 0; min-height: 0; display: flex; flex-direction: column; padding: 18px 14px;
+      border-right: 1px solid var(--border); background: var(--panel);
     }
     .sidebar-head, .chat-head, .composer { display: flex; gap: 10px; align-items: center; }
-    .sidebar-head { justify-content: space-between; margin-bottom: 14px; }
+    .brand { display: flex; align-items: center; gap: 10px; padding: 2px 6px 18px; }
+    .brand-mark, .assistant-avatar, .account-avatar {
+      display: grid; place-items: center; flex: 0 0 auto; border-radius: 10px;
+      background: linear-gradient(135deg, #5b8cff, #835bff); color: white;
+    }
+    .brand-mark { width: 34px; height: 34px; font-size: 1.1rem; }
+    .brand strong { display: block; }
+    .brand small { display: block; margin-top: 1px; color: var(--muted); font-size: .72rem; }
+    .sidebar-head { margin-bottom: 16px; }
+    .sidebar-head .primary { width: 100%; text-align: left; padding: 10px 12px; }
+    .sidebar-label { padding: 0 10px 7px; color: var(--muted); font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
     .conversation-list { min-height: 0; flex: 1; overflow-y: auto; }
     .conversation-item { position: relative; display: flex; align-items: center; gap: 4px; }
     .conversation {
@@ -51,7 +68,8 @@
       border: 0; border-radius: 9px; background: transparent; color: inherit;
       text-align: left; text-overflow: ellipsis; white-space: nowrap;
     }
-    .conversation:hover, .conversation.active { background: #21262d; }
+    .conversation:hover { background: var(--hover); }
+    .conversation.active { background: #202c3d; color: white; }
     .conversation-menu summary {
       width: 34px; height: 34px; display: grid; place-items: center;
       border-radius: 8px; color: #8b949e; cursor: pointer; list-style: none;
@@ -69,18 +87,28 @@
     }
     .menu-items button:hover { background: #30363d; }
     .menu-items .delete-option { color: #ff7b72; }
-    .account { padding-top: 14px; border-top: 1px solid #30363d; }
-    .account-row { display: flex; justify-content: space-between; align-items: center; }
+    .account { padding-top: 14px; border-top: 1px solid var(--border); }
+    .account-row { display: flex; gap: 9px; align-items: center; }
+    .account-avatar { width: 32px; height: 32px; border-radius: 50%; font-size: .78rem; }
+    #account-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .88rem; }
+    #logout { padding: 7px 9px; font-size: .78rem; }
     main { min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
-    .chat-head { min-height: 65px; padding: 12px 20px; border-bottom: 1px solid #30363d; }
-    .chat-head h2 { flex: 1; margin: 0; overflow: hidden; text-overflow: ellipsis; }
-    .messages { min-height: 0; flex: 1; overflow-y: auto; padding: 28px max(20px, calc((100% - 800px) / 2)); }
-    .empty { display: grid; height: 100%; place-items: center; color: #8b949e; text-align: center; }
-    .message { display: flex; margin: 16px 0; }
+    .chat-head { min-height: 70px; padding: 13px 24px; border-bottom: 1px solid var(--border); background: #0d1219cc; backdrop-filter: blur(10px); }
+    .chat-title-wrap { min-width: 0; flex: 1; }
+    .chat-head h2 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 1rem; }
+    .chat-head small { display: block; margin-top: 3px; color: var(--muted); }
+    .messages { min-height: 0; flex: 1; overflow-y: auto; padding: 30px max(24px, calc((100% - 850px) / 2)) 20px; }
+    .empty { display: grid; height: 100%; place-items: center; color: var(--muted); text-align: center; }
+    .empty-state { max-width: 330px; }
+    .empty-icon { width: 52px; height: 52px; display: grid; place-items: center; margin: 0 auto 14px; border: 1px solid var(--border); border-radius: 16px; background: var(--raised); font-size: 1.35rem; }
+    .empty-state strong { display: block; margin-bottom: 6px; color: var(--text); }
+    .message { width: 100%; display: flex; gap: 10px; margin: 20px auto; }
     .message.user { justify-content: flex-end; }
+    .assistant-avatar { width: 30px; height: 30px; margin-top: 2px; border-radius: 9px; font-size: .75rem; }
     .bubble {
-      max-width: min(680px, 85%); padding: 12px 15px; border-radius: 14px;
-      background: #21262d; white-space: pre-wrap; overflow-wrap: anywhere;
+      max-width: min(690px, 82%); padding: 12px 16px; border: 1px solid var(--border);
+      border-radius: 4px 15px 15px 15px; background: var(--raised);
+      line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere;
     }
     .bubble > :first-child { margin-top: 0; }
     .bubble > :last-child { margin-bottom: 0; }
@@ -100,25 +128,38 @@
     .assistant .bubble h1,
     .assistant .bubble h2,
     .assistant .bubble h3 { margin: 1em 0 .5em; line-height: 1.25; }
-    .user .bubble { background: #1f6feb; }
-    .composer { padding: 16px max(20px, calc((100% - 800px) / 2)); border-top: 1px solid #30363d; }
-    .composer textarea { min-height: 46px; max-height: 160px; resize: vertical; }
+    .user .bubble { border: 0; border-radius: 15px 15px 4px 15px; background: var(--accent); }
+    .thinking .bubble { color: var(--muted); }
+    .thinking .bubble::after { content: ""; display: inline-block; width: 1em; animation: dots 1.2s steps(4, end) infinite; }
+    @keyframes dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75%, 100% { content: "..."; } }
+    .composer-area { padding: 12px max(20px, calc((100% - 850px) / 2)) 18px; background: linear-gradient(transparent, var(--page) 24%); }
+    .composer { padding: 8px; border: 1px solid #35445a; border-radius: 16px; background: var(--raised); box-shadow: 0 12px 35px #0005; }
+    .composer:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px #5b8cff18, 0 12px 35px #0005; }
+    .composer textarea { min-height: 42px; max-height: 140px; padding: 10px 7px; border: 0; background: transparent; resize: none; }
+    .composer textarea:focus { border: 0; }
     .composer button { align-self: flex-end; }
+    #attach { width: 40px; padding: 10px; font-size: 0; }
+    #attach::before { content: "＋"; font-size: 1.2rem; }
+    #send { min-width: 68px; }
+    .composer-hint { margin: 7px 4px 0; color: var(--muted); font-size: .72rem; text-align: center; }
     .file-panel {
       min-width: 0; min-height: 0; display: flex; flex-direction: column;
-      border-left: 1px solid #30363d; background: #161b22;
+      border-left: 1px solid var(--border); background: var(--panel);
     }
-    .file-panel h3 { margin: 0; padding: 20px 16px; border-bottom: 1px solid #30363d; }
+    .file-panel-head { min-height: 70px; display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid var(--border); }
+    .file-panel-head h3 { flex: 1; margin: 0; }
+    #file-count { padding: 3px 7px; border-radius: 999px; background: var(--hover); color: var(--muted); font-size: .72rem; }
     .file-groups { min-height: 0; overflow-y: auto; padding: 14px; }
     .file-group { margin-bottom: 22px; }
     .file-group h4 { margin: 0 0 8px; color: #8b949e; font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; }
     .file-list { display: grid; gap: 6px; }
     .file-chip {
       width: 100%; overflow: hidden; border: 1px solid #30363d; border-radius: 8px;
-      padding: 9px 10px; background: #21262d; color: inherit;
+      padding: 10px; background: var(--raised); color: inherit;
       text-align: left; text-overflow: ellipsis; white-space: nowrap;
     }
     .file-empty { color: #8b949e; font-size: .9rem; }
+    .toast { position: fixed; z-index: 20; right: 20px; bottom: 20px; max-width: 360px; padding: 11px 14px; border: 1px solid #7d3035; border-radius: 10px; background: #351a1d; color: #ffb4ae; box-shadow: 0 12px 35px #0008; }
     dialog {
       width: min(760px, calc(100% - 32px)); max-height: 80vh; padding: 0;
       border: 1px solid #30363d; border-radius: 14px; background: #161b22;
@@ -135,7 +176,7 @@
       .shell { grid-template-columns: 1fr; grid-template-rows: 180px minmax(0, 1fr) 160px; }
       aside { border-right: 0; border-bottom: 1px solid #30363d; }
       .file-panel { border-left: 0; border-top: 1px solid #30363d; }
-      .file-panel h3 { padding: 10px 14px; }
+      .file-panel-head { min-height: 42px; }
       .file-groups { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 10px 14px; }
     }
   </style>
@@ -161,26 +202,37 @@
 
   <section id="app" class="shell hidden">
     <aside>
-      <div class="sidebar-head"><strong>Conversations</strong><button id="new-chat" class="primary" type="button">+ New</button></div>
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">✦</span>
+        <div><strong>Chatbot</strong><small>AI workspace</small></div>
+      </div>
+      <div class="sidebar-head"><button id="new-chat" class="primary" type="button">＋ New conversation</button></div>
+      <div class="sidebar-label">Recent</div>
       <nav id="conversation-list" class="conversation-list" aria-label="Conversations"></nav>
       <div class="account">
-        <div class="account-row"><span id="account-name"></span><button id="logout" class="secondary" type="button">Log out</button></div>
+        <div class="account-row"><span id="account-avatar" class="account-avatar" aria-hidden="true">U</span><span id="account-name"></span><button id="logout" class="secondary" type="button">Log out</button></div>
       </div>
     </aside>
     <main>
       <header class="chat-head">
-        <h2 id="chat-title">Select a conversation</h2>
+        <div class="chat-title-wrap">
+          <h2 id="chat-title">Select a conversation</h2>
+          <small id="chat-subtitle">Choose a conversation to begin</small>
+        </div>
       </header>
-      <div id="messages" class="messages"><div class="empty">Create a conversation to start chatting.</div></div>
-      <form id="composer" class="composer">
-        <input id="file-input" type="file" multiple hidden>
-        <button id="attach" class="secondary" type="button" disabled>Attach</button>
-        <textarea id="message" aria-label="Message" placeholder="Type a message…" maxlength="20000" required disabled></textarea>
-        <button id="send" class="primary" type="submit" disabled>Send</button>
-      </form>
+      <div id="messages" class="messages"><div class="empty"><div class="empty-state"><span class="empty-icon">✦</span><strong>Start a conversation</strong><span>Create a new conversation, then ask anything.</span></div></div></div>
+      <div class="composer-area">
+        <form id="composer" class="composer">
+          <input id="file-input" type="file" multiple hidden>
+          <button id="attach" class="secondary" type="button" aria-label="Attach files" title="Attach files" disabled>Attach</button>
+          <textarea id="message" aria-label="Message" placeholder="Message the assistant…" maxlength="20000" rows="1" required disabled></textarea>
+          <button id="send" class="primary" type="submit" disabled>Send</button>
+        </form>
+        <div class="composer-hint">Enter to send · Shift + Enter for a new line</div>
+      </div>
     </main>
     <section class="file-panel" aria-label="Conversation files">
-      <h3>Files</h3>
+      <div class="file-panel-head"><h3>Files</h3><span id="file-count">0</span></div>
       <div class="file-groups">
         <section class="file-group">
           <h4>Uploaded</h4>
@@ -202,6 +254,7 @@
     </div>
     <div id="preview-body" class="preview-body"></div>
   </dialog>
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/marked@18.0.14/lib/marked.umd.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.16/dist/purify.min.js"></script>
@@ -213,6 +266,7 @@
     let conversationList = [];
     let pendingFiles = [];
     let previewUrl = null;
+    let toastTimer = null;
 
     function tokens(value) {
       if (value) localStorage.setItem("tokens", JSON.stringify(value));
@@ -223,6 +277,20 @@
       if (typeof data?.detail === "string") return data.detail;
       if (Array.isArray(data?.detail)) return data.detail.map((item) => item.msg).join("; ");
       return "Something went wrong.";
+    }
+
+    function showToast(message) {
+      clearTimeout(toastTimer);
+      $("toast").textContent = message;
+      $("toast").classList.remove("hidden");
+      toastTimer = setTimeout(() => $("toast").classList.add("hidden"), 4000);
+    }
+
+    function showEmpty(title, copy) {
+      $("messages").innerHTML = '<div class="empty"><div class="empty-state"><span class="empty-icon">✦</span><strong></strong><span></span></div></div>';
+      const state = $("messages").querySelector(".empty-state");
+      state.querySelector("strong").textContent = title;
+      state.lastElementChild.textContent = copy;
     }
 
     async function request(path, options = {}, retry = true) {
@@ -257,6 +325,7 @@
     }
 
     function renderFiles(files) {
+      $("file-count").textContent = files.length;
       for (const source of ["uploaded", "generated"]) {
         const container = $(`${source}-files`);
         const matching = files.filter((file) => file.source === source);
@@ -363,6 +432,13 @@
       bubble.className = "bubble";
       if (role === "assistant") renderMarkdown(bubble, content);
       else bubble.textContent = content;
+      if (role === "assistant") {
+        const avatar = document.createElement("span");
+        avatar.className = "assistant-avatar";
+        avatar.setAttribute("aria-hidden", "true");
+        avatar.textContent = "✦";
+        row.appendChild(avatar);
+      }
       row.appendChild(bubble);
       $("messages").appendChild(row);
       $("messages").scrollTop = $("messages").scrollHeight;
@@ -412,19 +488,19 @@
       currentConversation = conversation;
       renderConversations();
       $("chat-title").textContent = conversation.title || "New conversation";
+      $("chat-subtitle").textContent = "AI assistant";
       $("message").disabled = false;
       $("send").disabled = false;
       $("attach").disabled = false;
       pendingFiles = [];
-      $("messages").innerHTML = '<div class="empty">Loading…</div>';
+      showEmpty("Loading conversation…", "Fetching your message history.");
       try {
         const history = await request(`/chat/conversations/${conversation.id}/messages`);
         $("messages").replaceChildren();
         history.messages.forEach((item) => addMessage(item.role, item.content));
-        if (!history.messages.length) $("messages").innerHTML = '<div class="empty">Send the first message.</div>';
+        if (!history.messages.length) showEmpty("Ready when you are", "Send a message or attach a file to get started.");
       } catch (error) {
-        $("messages").innerHTML = `<div class="empty"></div>`;
-        $("messages").firstChild.textContent = error.message;
+        showEmpty("Could not load this conversation", error.message);
       }
       try { await loadFiles(); } catch (error) { renderFiles([]); }
     }
@@ -432,7 +508,9 @@
     async function startApp() {
       try {
         const user = await request("/auth/me");
-        $("account-name").textContent = user.username || user.email;
+        const displayName = user.username || user.email;
+        $("account-name").textContent = displayName;
+        $("account-avatar").textContent = displayName.charAt(0).toUpperCase();
         $("auth").classList.add("hidden");
         $("app").classList.remove("hidden");
         await loadConversations();
@@ -465,10 +543,17 @@
     };
 
     $("new-chat").onclick = async () => {
-      const conversation = await request("/chat/conversations", { method: "POST", body: "{}" });
-      conversationList.unshift(conversation);
-      await selectConversation(conversation);
-      $("message").focus();
+      $("new-chat").disabled = true;
+      try {
+        const conversation = await request("/chat/conversations", { method: "POST", body: "{}" });
+        conversationList.unshift(conversation);
+        await selectConversation(conversation);
+        $("message").focus();
+      } catch (error) {
+        showToast(error.message);
+      } finally {
+        $("new-chat").disabled = false;
+      }
     };
 
     $("attach").onclick = () => $("file-input").click();
@@ -485,7 +570,7 @@
         }
         await loadFiles();
       } catch (error) {
-        alert(error.message);
+        showToast(error.message);
       } finally {
         $("file-input").value = "";
       }
@@ -499,12 +584,15 @@
         ? `${text}\n\nAttached files (use read_file if needed): ${pendingFiles.join(", ")}`
         : text;
       $("message").value = "";
+      $("message").style.height = "auto";
       $("send").disabled = true;
       addMessage("user", text);
       const waiting = addMessage("assistant", "Thinking…");
+      waiting.classList.add("thinking");
       try {
         const answer = await request(`/chat/conversations/${currentConversation.id}/messages`, { method: "POST", body: JSON.stringify({ message: prompt }) });
         pendingFiles = [];
+        waiting.classList.remove("thinking");
         renderMarkdown(waiting.querySelector(".bubble"), answer.content);
         if (!currentConversation.title) {
           currentConversation.title = text.slice(0, 100);
@@ -512,6 +600,7 @@
           renderConversations();
         }
       } catch (error) {
+        waiting.classList.remove("thinking");
         waiting.querySelector(".bubble").textContent = `Error: ${error.message}`;
       } finally {
         $("send").disabled = false;
@@ -522,6 +611,10 @@
 
     $("message").onkeydown = (event) => {
       if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); $("composer").requestSubmit(); }
+    };
+    $("message").oninput = () => {
+      $("message").style.height = "auto";
+      $("message").style.height = `${Math.min($("message").scrollHeight, 140)}px`;
     };
 
     async function renameConversation(conversation) {
@@ -543,12 +636,13 @@
       }
       currentConversation = null;
       $("chat-title").textContent = "Select a conversation";
+      $("chat-subtitle").textContent = "Choose a conversation to begin";
       $("message").disabled = true;
       $("send").disabled = true;
       $("attach").disabled = true;
       pendingFiles = [];
       renderFiles([]);
-      $("messages").innerHTML = '<div class="empty">Create a conversation to start chatting.</div>';
+      showEmpty("Start a conversation", "Create a new conversation, then ask anything.");
       renderConversations();
       if (conversationList.length) await selectConversation(conversationList[0]);
     }
