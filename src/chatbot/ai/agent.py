@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import Callable, Sequence
 from typing import Any
+from importlib.resources import files
 
 from langchain.agents import create_agent
 from langchain_core.language_models import BaseChatModel
@@ -14,18 +15,18 @@ from chatbot.ai.tools import ToolContext
 
 
 Tool = BaseTool | Callable[..., Any] | dict[str, Any]
-DEFAULT_SYSTEM_PROMPT = """You are a helpful assistant.
-Use Markdown when it improves readability. Emit Markdown directly; never wrap an
-entire formatted response in a ```markdown code fence.
-"""
-
+SYSTEM_PROMPT = (
+    files("chatbot.ai.prompts")
+    .joinpath("agent_prompt.md")
+    .read_text(encoding="utf-8")
+)
 
 class AgenticChatbot:
     def __init__(
         self,
         model: BaseChatModel | None = None,
         tools: Sequence[Tool] = (),
-        system_prompt: str = DEFAULT_SYSTEM_PROMPT,
+        system_prompt: str = SYSTEM_PROMPT,
         checkpointer: BaseCheckpointSaver | None = None,
     ) -> None:
         self.checkpointer = checkpointer or InMemorySaver()

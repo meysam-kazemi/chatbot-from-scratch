@@ -44,6 +44,13 @@ class Settings(BaseSettings):
         ge=0,
     )
 
+    ai_title_model: str = Field(default="gpt-4o-mini")
+    ai_title_temperature: float = Field(default=0.5)
+    ai_title_max_tokens: int = Field(default=200)
+    ai_title_timeout: int = Field(default=3)
+    ai_title_max_retries: int = Field(default=2)
+
+
     # Provider credentials
     openai_api_key: str | None = None
     tavily_api_key: str | None = None

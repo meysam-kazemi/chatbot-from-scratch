@@ -16,7 +16,8 @@ from fastapi.responses import FileResponse as FileDownloadResponse
 from langchain_core.messages import AIMessage
 
 from chatbot.ai.agent import AgenticChatbot
-from chatbot.api.dependencies import get_chatbot, get_current_user
+from chatbot.ai.title import TitleGenerator
+from chatbot.api.dependencies import get_chatbot, get_current_user, get_title_generator
 from chatbot.db.models.user import User
 from chatbot.repositories import conversations, files
 from chatbot.schemas.chat import (
@@ -205,6 +206,7 @@ async def send_message(
     request: Request,
     user: Annotated[User, Depends(get_current_user)],
     chatbot: Annotated[AgenticChatbot, Depends(get_chatbot)],
+    title_generator: Annotated[TitleGenerator, Depends(get_title_generator)],
 ) -> MessageResponse:
     conversation = await owned_conversation(request, conversation_id, user)
     answer = await chatbot.ainvoke(
@@ -216,6 +218,6 @@ async def send_message(
             "db": request.app.state.db,
         },
     )
-    title = body.message[:100] if conversation.title is None else None
+    title = await title_generator.ainvoke(body.message) if conversation.title is None else None
     await conversations.touch(request.app.state.db, conversation_id, title)
     return MessageResponse(role="assistant", content=answer)

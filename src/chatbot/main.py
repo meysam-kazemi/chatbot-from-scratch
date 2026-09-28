@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 
 from chatbot.ai.agent import AgenticChatbot
+from chatbot.ai.title import TitleGenerator
 from chatbot.ai.memory import async_postgres_memory
 from chatbot.ai.tools import assistant_tools
 from chatbot.api.request_logging import log_request
@@ -27,6 +28,7 @@ async def lifespan(app: FastAPI):
         app.state.chatbot = AgenticChatbot(
             checkpointer=memory, tools=assistant_tools
         )
+        app.state.title_generator = TitleGenerator()
         yield
     logger.info("application_stopped")
 
