@@ -1,4 +1,5 @@
 from importlib.resources import files
+from langchain_core.callbacks.manager import Callbacks
 from langchain_core.language_models import BaseChatModel
 
 from chatbot.ai.model import get_title_model
@@ -36,9 +37,10 @@ class TitleGenerator:
         )
         return response.text.strip()[:100]
     
-    async def ainvoke(self, message: str) -> str:
+    async def ainvoke(self, message: str, callbacks: Callbacks = None) -> str:
         if not message.strip():
             raise ValueError("message cannot be empty")
+        config = {"callbacks": callbacks} if callbacks else None
         response = await self.model.ainvoke(
             [
                 {
@@ -49,7 +51,8 @@ class TitleGenerator:
                     "role": "user",
                     "content": message[:4000],
                 },
-            ]
+            ],
+            config=config,
         )
 
         return response.text.strip()[:100]

@@ -17,6 +17,7 @@ from langchain_core.messages import AIMessage
 
 from chatbot.ai.agent import AgenticChatbot
 from chatbot.ai.title import TitleGenerator
+from chatbot.ai.tracing import PostgresTracer
 from chatbot.api.dependencies import get_chatbot, get_current_user, get_title_generator
 from chatbot.db.models.user import User
 from chatbot.repositories import conversations, files
@@ -209,15 +210,24 @@ async def send_message(
     title_generator: Annotated[TitleGenerator, Depends(get_title_generator)],
 ) -> MessageResponse:
     conversation = await owned_conversation(request, conversation_id, user)
-    answer = await chatbot.ainvoke(
-        body.message,
-        str(conversation_id),
-        context={
-            "user_id": str(user.id),
-            "conversation_id": str(conversation_id),
-            "db": request.app.state.db,
-        },
-    )
-    title = await title_generator.ainvoke(body.message) if conversation.title is None else None
+    tracer = PostgresTracer(request.app.state.db, user.id, conversation_id)
+    try:
+        answer = await chatbot.ainvoke(
+            body.message,
+            str(conversation_id),
+            context={
+                "user_id": str(user.id),
+                "conversation_id": str(conversation_id),
+                "db": request.app.state.db,
+            },
+            callbacks=[tracer],
+        )
+        title = (
+            await title_generator.ainvoke(body.message, callbacks=[tracer])
+            if conversation.title is None
+            else None
+        )
+    finally:
+        await tracer.persist()
     await conversations.touch(request.app.state.db, conversation_id, title)
     return MessageResponse(role="assistant", content=answer)

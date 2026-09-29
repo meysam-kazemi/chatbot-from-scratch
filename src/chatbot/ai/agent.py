@@ -4,6 +4,7 @@ from typing import Any
 from importlib.resources import files
 
 from langchain.agents import create_agent
+from langchain_core.callbacks.manager import Callbacks
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.tools import BaseTool
@@ -66,13 +67,17 @@ class AgenticChatbot:
         message: str,
         conversation_id: str = "default",
         context: ToolContext | None = None,
+        callbacks: Callbacks = None,
     ) -> str:
         if not message.strip():
             raise ValueError("message cannot be empty")
 
+        config = {"configurable": {"thread_id": conversation_id}}
+        if callbacks:
+            config["callbacks"] = callbacks
         result = await self.agent.ainvoke(
             {"messages": [{"role": "user", "content": message}]},
-            config={"configurable": {"thread_id": conversation_id}},
+            config=config,
             context=context,
         )
         return result["messages"][-1].content
