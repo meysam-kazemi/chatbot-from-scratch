@@ -33,6 +33,18 @@ CREATE TABLE IF NOT EXISTS conversations (
 );
 CREATE INDEX IF NOT EXISTS conversations_user_updated_idx
     ON conversations (user_id, updated_at DESC);
+CREATE TABLE IF NOT EXISTS traces (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    run_type TEXT NOT NULL,
+    started_at TIMESTAMPTZ NOT NULL,
+    ended_at TIMESTAMPTZ,
+    payload JSONB NOT NULL
+);
+CREATE INDEX IF NOT EXISTS traces_conversation_started_idx
+    ON traces (conversation_id, started_at DESC);
 """
 
 
