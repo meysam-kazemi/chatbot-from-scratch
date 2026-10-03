@@ -39,13 +39,22 @@ class AgenticChatbot:
             context_schema=ToolContext,
         )
 
-    def invoke(self, message: str, conversation_id: str = "default") -> str:
+    def invoke(
+        self, message: str,
+        conversation_id: str = "default",
+        context: ToolContext | None = None,
+        callbacks: Callbacks = None,
+        ) -> str:
         if not message.strip():
             raise ValueError("message cannot be empty")
 
+        config = {"configurable": {"thread_id": conversation_id}}
+        if callbacks:
+            config["callbacks"] = callbacks
         result = self.agent.invoke(
             {"messages": [{"role": "user", "content": message}]},
-            config={"configurable": {"thread_id": conversation_id}},
+            config=config,
+            context=context,
         )
         return result["messages"][-1].content
 

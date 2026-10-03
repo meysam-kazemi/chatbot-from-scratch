@@ -2,6 +2,7 @@
 name = "chatbot"
 version = "1.0.0"
 dependencies = [
+    "alembic",
     "fastapi[all]>=0.141.1",
     "langchain>=1.4.2",
     "langchain-core>=1.6.3",
