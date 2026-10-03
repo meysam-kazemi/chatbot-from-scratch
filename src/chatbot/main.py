@@ -11,7 +11,7 @@ from chatbot.ai.memory import async_postgres_memory
 from chatbot.ai.tools import assistant_tools
 from chatbot.api.request_logging import log_request
 from chatbot.api.router import api_router
-from chatbot.db.database import database_pool
+from chatbot.db.database import database_session_factory
 from chatbot.log_config import configure_logging
 
 
@@ -22,7 +22,10 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     configure_logging()
     logger.info("application_starting")
-    async with async_postgres_memory() as memory, database_pool() as db:
+    async with (
+        async_postgres_memory() as memory,
+        database_session_factory() as db,
+    ):
         app.state.memory = memory
         app.state.db = db
         app.state.chatbot = AgenticChatbot(

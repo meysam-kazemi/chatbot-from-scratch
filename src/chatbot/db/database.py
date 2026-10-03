@@ -1,60 +1,27 @@
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from psycopg_pool import AsyncConnectionPool
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
-from chatbot.ai.memory import _postgres_dsn
 from chatbot.config import settings
 
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS users (
-    id UUID PRIMARY KEY,
-    email VARCHAR(320) NOT NULL UNIQUE,
-    username VARCHAR(30),
-    password_hash VARCHAR(255) NOT NULL,
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(30);
-CREATE UNIQUE INDEX IF NOT EXISTS users_username_key
-    ON users (LOWER(username)) WHERE username IS NOT NULL;
-CREATE TABLE IF NOT EXISTS refresh_tokens (
-    token_hash CHAR(64) PRIMARY KEY,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    expires_at TIMESTAMPTZ NOT NULL
-);
-CREATE INDEX IF NOT EXISTS refresh_tokens_user_id_idx ON refresh_tokens(user_id);
-CREATE TABLE IF NOT EXISTS conversations (
-    id UUID PRIMARY KEY,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    title VARCHAR(100),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS conversations_user_updated_idx
-    ON conversations (user_id, updated_at DESC);
-CREATE TABLE IF NOT EXISTS traces (
-    id UUID PRIMARY KEY,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-    name TEXT NOT NULL,
-    run_type TEXT NOT NULL,
-    started_at TIMESTAMPTZ NOT NULL,
-    ended_at TIMESTAMPTZ,
-    payload JSONB NOT NULL
-);
-CREATE INDEX IF NOT EXISTS traces_conversation_started_idx
-    ON traces (conversation_id, started_at DESC);
-"""
+SessionFactory = async_sessionmaker[AsyncSession]
+
+
+def sqlalchemy_url(database_url: str) -> str:
+    url = database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    return url.replace("postgresql://", "postgresql+psycopg://", 1)
 
 
 @asynccontextmanager
-async def database_pool():
-    pool = AsyncConnectionPool(_postgres_dsn(settings.database_url), open=False)
-    await pool.open()
+async def database_session_factory() -> AsyncIterator[SessionFactory]:
+    engine = create_async_engine(sqlalchemy_url(settings.database_url))
     try:
-        async with pool.connection() as connection:
-            await connection.execute(SCHEMA)
-        yield pool
+        yield async_sessionmaker(engine, expire_on_commit=False)
     finally:
-        await pool.close()
+        await engine.dispose()

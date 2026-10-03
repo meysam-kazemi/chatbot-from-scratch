@@ -6,9 +6,9 @@ import uuid
 from typing import TypedDict
 
 from langchain.tools import ToolRuntime, tool
-from psycopg_pool import AsyncConnectionPool
 
 from chatbot.config import settings
+from chatbot.db.database import SessionFactory
 from chatbot.repositories import conversations
 from chatbot.repositories.files import safe_path, workspace
 
@@ -16,7 +16,7 @@ from chatbot.repositories.files import safe_path, workspace
 class ToolContext(TypedDict):
     user_id: str
     conversation_id: str
-    db: AsyncConnectionPool
+    db: SessionFactory
 
 
 @tool

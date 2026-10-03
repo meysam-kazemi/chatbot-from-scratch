@@ -1,90 +1,87 @@
 import uuid
 from datetime import datetime, timezone
 
-from psycopg import errors
-from psycopg.rows import class_row
-from psycopg_pool import AsyncConnectionPool
+from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 
-from chatbot.db.models.user import User
+from chatbot.db.database import SessionFactory
+from chatbot.db.models.user import RefreshToken, User
 
 
 async def create_user(
-    pool: AsyncConnectionPool,
+    session_factory: SessionFactory,
     email: str,
     username: str,
     password_hash: str,
 ) -> User | None:
-    user_id = uuid.uuid4()
-    try:
-        async with pool.connection() as connection, connection.cursor(
-            row_factory=class_row(User)
-        ) as cursor:
-            await cursor.execute(
-                """INSERT INTO users (id, email, username, password_hash)
-                   VALUES (%s, %s, %s, %s)
-                   RETURNING id, email, username, password_hash,
-                             is_active, created_at""",
-                (user_id, email, username, password_hash),
-            )
-            return await cursor.fetchone()
-    except errors.UniqueViolation:
-        return None
+    user = User(
+        id=uuid.uuid4(),
+        email=email,
+        username=username,
+        password_hash=password_hash,
+    )
+    async with session_factory() as session:
+        try:
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
+            return user
+        except IntegrityError:
+            await session.rollback()
+            return None
 
 
-async def get_user_by_email(pool: AsyncConnectionPool, email: str) -> User | None:
-    async with pool.connection() as connection, connection.cursor(
-        row_factory=class_row(User)
-    ) as cursor:
-        await cursor.execute(
-            """SELECT id, email, username, password_hash, is_active, created_at
-               FROM users WHERE email = %s""",
-            (email,),
-        )
-        return await cursor.fetchone()
+async def get_user_by_email(
+    session_factory: SessionFactory, email: str
+) -> User | None:
+    async with session_factory() as session:
+        return await session.scalar(select(User).where(User.email == email))
 
 
-async def get_user(pool: AsyncConnectionPool, user_id: uuid.UUID) -> User | None:
-    async with pool.connection() as connection, connection.cursor(
-        row_factory=class_row(User)
-    ) as cursor:
-        await cursor.execute(
-            """SELECT id, email, username, password_hash, is_active, created_at
-               FROM users WHERE id = %s""",
-            (user_id,),
-        )
-        return await cursor.fetchone()
+async def get_user(
+    session_factory: SessionFactory, user_id: uuid.UUID
+) -> User | None:
+    async with session_factory() as session:
+        return await session.get(User, user_id)
 
 
 async def store_refresh_token(
-    pool: AsyncConnectionPool,
+    session_factory: SessionFactory,
     token_hash: str,
     user_id: uuid.UUID,
     expires_at: datetime,
 ) -> None:
-    async with pool.connection() as connection:
-        await connection.execute(
-            """INSERT INTO refresh_tokens (token_hash, user_id, expires_at)
-               VALUES (%s, %s, %s)""",
-            (token_hash, user_id, expires_at),
+    async with session_factory() as session:
+        session.add(
+            RefreshToken(
+                token_hash=token_hash,
+                user_id=user_id,
+                expires_at=expires_at,
+            )
         )
+        await session.commit()
 
 
 async def consume_refresh_token(
-    pool: AsyncConnectionPool, token_hash: str, user_id: uuid.UUID
+    session_factory: SessionFactory, token_hash: str, user_id: uuid.UUID
 ) -> bool:
-    async with pool.connection() as connection:
-        cursor = await connection.execute(
-            """DELETE FROM refresh_tokens
-               WHERE token_hash = %s AND user_id = %s AND expires_at > %s""",
-            (token_hash, user_id, datetime.now(timezone.utc)),
+    async with session_factory() as session:
+        result = await session.execute(
+            delete(RefreshToken).where(
+                RefreshToken.token_hash == token_hash,
+                RefreshToken.user_id == user_id,
+                RefreshToken.expires_at > datetime.now(timezone.utc),
+            )
         )
-        return cursor.rowcount == 1
+        await session.commit()
+        return result.rowcount == 1
 
 
 async def revoke_refresh_token(
-    pool: AsyncConnectionPool, token_hash: str
+    session_factory: SessionFactory, token_hash: str
 ) -> None:
-    async with pool.connection() as connection:
-        await connection.execute(
-            "DELETE FROM refresh_tokens WHERE token_hash = %s", (token_hash,)
+    async with session_factory() as session:
+        await session.execute(
+            delete(RefreshToken).where(RefreshToken.token_hash == token_hash)
         )
+        await session.commit()
