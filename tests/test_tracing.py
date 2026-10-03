@@ -1,6 +1,5 @@
 import unittest
 import uuid
-from contextlib import asynccontextmanager
 
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage
@@ -21,22 +20,38 @@ class ToolCallingModel(FakeMessagesListChatModel):
         return self
 
 
-class FakePool:
+class FakeSession:
+    def __init__(self, rows):
+        self.rows = rows
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_args):
+        pass
+
+    def add(self, row):
+        self.rows.append(row)
+
+    async def commit(self):
+        pass
+
+    async def rollback(self):
+        pass
+
+
+class FakeSessionFactory:
     def __init__(self):
         self.rows = []
 
-    @asynccontextmanager
-    async def connection(self):
-        yield self
-
-    async def execute(self, _query, parameters):
-        self.rows.append(parameters)
+    def __call__(self):
+        return FakeSession(self.rows)
 
 
 class TracingTest(unittest.IsolatedAsyncioTestCase):
     async def test_agent_trace_contains_model_and_tool_runs(self):
-        pool = FakePool()
-        tracer = PostgresTracer(pool, uuid.uuid4(), uuid.uuid4())
+        session_factory = FakeSessionFactory()
+        tracer = PostgresTracer(session_factory, uuid.uuid4(), uuid.uuid4())
         chatbot = AgenticChatbot(
             model=ToolCallingModel(
                 responses=[
@@ -63,7 +78,7 @@ class TracingTest(unittest.IsolatedAsyncioTestCase):
         )
         await tracer.persist()
 
-        payload = pool.rows[0][-1].obj
+        payload = session_factory.rows[0].payload
         run_types = {
             run["run_type"]
             for run in payload["child_runs"]
