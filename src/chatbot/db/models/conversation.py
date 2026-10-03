@@ -1,12 +1,30 @@
-from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
+from sqlalchemy import DateTime, ForeignKey, Index, String, func
+from sqlalchemy.orm import Mapped, mapped_column
 
-@dataclass(frozen=True)
-class Conversation:
-    id: UUID
-    user_id: UUID
-    title: str | None
-    created_at: datetime
-    updated_at: datetime
+from chatbot.db.models.base import Base
+
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE")
+    )
+    title: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+Index(
+    "conversations_user_updated_idx",
+    Conversation.user_id,
+    Conversation.updated_at.desc(),
+)
