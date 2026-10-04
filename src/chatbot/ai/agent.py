@@ -65,7 +65,8 @@ class AgenticChatbot:
         return [
             message
             for message in state.values.get("messages", [])
-            if isinstance(message, (HumanMessage, AIMessage))
+            if isinstance(message, HumanMessage)
+            or (isinstance(message, AIMessage) and not message.tool_calls)
         ]
 
     async def adelete_conversation(self, conversation_id: str) -> None:
