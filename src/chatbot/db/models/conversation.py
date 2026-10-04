@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, func, true
 from sqlalchemy.orm import Mapped, mapped_column
 
 from chatbot.db.models.base import Base
@@ -21,6 +21,7 @@ class Conversation(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    is_active: Mapped[bool] = mapped_column(Boolean, server_default=true())
 
 
 Index(

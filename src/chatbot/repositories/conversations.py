@@ -1,6 +1,5 @@
 import uuid
 
-from sqlalchemy import delete as sql_delete
 from sqlalchemy import func, select, update as sql_update
 
 from chatbot.db.database import SessionFactory
@@ -27,7 +26,10 @@ async def list_for_user(
     async with session_factory() as session:
         result = await session.scalars(
             select(Conversation)
-            .where(Conversation.user_id == user_id)
+            .where(
+                Conversation.user_id == user_id,
+                Conversation.is_active.is_(True),
+            )
             .order_by(Conversation.updated_at.desc())
             .limit(limit)
             .offset(offset)
@@ -45,6 +47,7 @@ async def get_for_user(
             select(Conversation).where(
                 Conversation.id == conversation_id,
                 Conversation.user_id == user_id,
+                Conversation.is_active.is_(True),
             )
         )
 
@@ -61,6 +64,7 @@ async def update(
             .where(
                 Conversation.id == conversation_id,
                 Conversation.user_id == user_id,
+                Conversation.is_active.is_(True),
             )
             .values(title=title, updated_at=func.now())
             .returning(Conversation)
@@ -78,7 +82,10 @@ async def touch(
     async with session_factory() as session:
         await session.execute(
             sql_update(Conversation)
-            .where(Conversation.id == conversation_id)
+            .where(
+                Conversation.id == conversation_id,
+                Conversation.is_active.is_(True),
+            )
             .values(
                 title=func.coalesce(Conversation.title, title),
                 updated_at=func.now(),
@@ -94,9 +101,13 @@ async def delete(
 ) -> bool:
     async with session_factory() as session:
         result = await session.execute(
-            sql_delete(Conversation).where(
+            sql_update(Conversation).where(
                 Conversation.id == conversation_id,
                 Conversation.user_id == user_id,
+                Conversation.is_active.is_(True),
+            ).values(
+                is_active=False,
+                updated_at=func.now(),
             )
         )
         await session.commit()
