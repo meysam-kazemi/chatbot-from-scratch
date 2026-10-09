@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Callable, Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
 from typing import Any
 from importlib.resources import files
 
@@ -96,6 +96,43 @@ class AgenticChatbot:
             context=context,
         )
         return result["messages"][-1].content
+
+
+    async def astream(
+        self,
+        message: str,
+        conversation_id: str = "default",
+        context: ToolContext | None = None,
+        callbacks: Callbacks = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Stream text and tool lifecycle events, without exposing tool payloads."""
+        if not message.strip():
+            raise ValueError("message cannot be empty")
+        config = {"configurable": {"thread_id": conversation_id}}
+        if callbacks:
+            config["callbacks"] = callbacks
+        async for event in self.agent.astream_events(
+            {"messages": [{"role": "user", "content": message}]},
+            config=config, context=context, version="v2",
+        ):
+            kind = event["event"]
+            if kind == "on_chat_model_start":
+                yield {"event": "message_start"}
+            elif kind == "on_chat_model_stream":
+                text = event["data"]["chunk"].text
+                if text:
+                    yield {"event": "delta", "text": text}
+            elif kind in {"on_tool_start", "on_tool_end"}:
+                output = event["data"].get("output")
+                yield {
+                    "event": "tool_start" if kind == "on_tool_start" else "tool_end",
+                    "id": str(event["run_id"]),
+                    "name": event["name"],
+                    "status": "error" if getattr(output, "status", None) == "error" else "ok",
+                }
+            elif kind == "on_chain_end" and not event.get("parent_ids"):
+                output = event["data"]["output"]
+                yield {"event": "answer", "content": output["messages"][-1].text}
 
 
 async def demo() -> None:

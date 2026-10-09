@@ -179,6 +179,9 @@
       .file-panel-head { min-height: 42px; }
       .file-groups { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 10px 14px; }
     }
+    .stream-response { min-width: 0; max-width: min(690px, 82%); }
+    .stream-response .bubble { max-width: 100%; }
+    .tool-progress { font-size: 12px; color: var(--muted, #777); align-self: flex-end; padding: 8px; }
   </style>
 </head>
 <body>
@@ -261,6 +264,7 @@
   <script>
     const API = "/api/v1";
     const $ = (id) => document.getElementById(id);
+    let sending = false;
     let registering = false;
     let currentConversation = null;
     let conversationList = [];
@@ -485,6 +489,7 @@
     }
 
     async function selectConversation(conversation) {
+      if (sending) return;
       currentConversation = conversation;
       renderConversations();
       $("chat-title").textContent = conversation.title || "New conversation";
@@ -543,6 +548,7 @@
     };
 
     $("new-chat").onclick = async () => {
+      if (sending) return;
       $("new-chat").disabled = true;
       try {
         const conversation = await request("/chat/conversations", { method: "POST", body: "{}" });
@@ -579,7 +585,11 @@
     $("composer").onsubmit = async (event) => {
       event.preventDefault();
       const text = $("message").value.trim();
-      if (!text || !currentConversation) return;
+      if (!text || !currentConversation || sending) return;
+      sending = true;
+      $("new-chat").disabled = true;
+      $("attach").disabled = true;
+      $("logout").disabled = true;
       const prompt = pendingFiles.length
         ? `${text}\n\nAttached files (use read_file if needed): ${pendingFiles.join(", ")}`
         : text;
@@ -589,25 +599,98 @@
       addMessage("user", text);
       const waiting = addMessage("assistant", "Thinking…");
       waiting.classList.add("thinking");
+      const bubble = waiting.querySelector(".bubble");
+      const progress = document.createElement("div");
+      progress.className = "tool-progress";
+      progress.setAttribute("role", "status");
+      const responseContent = document.createElement("div");
+      responseContent.className = "stream-response";
+      responseContent.append(bubble, progress);
+      waiting.appendChild(responseContent);
+      const toolRows = new Map();
+      let content = "";
       try {
-        const answer = await request(`/chat/conversations/${currentConversation.id}/messages`, { method: "POST", body: JSON.stringify({ message: prompt }) });
+        const response = await request(`/chat/conversations/${currentConversation.id}/messages/stream`, {
+          method: "POST", body: JSON.stringify({ message: prompt }), raw: true
+        });
         pendingFiles = [];
-        waiting.classList.remove("thinking");
-        renderMarkdown(waiting.querySelector(".bubble"), answer.content);
-        if (!currentConversation.title) {
-          currentConversation.title = text.slice(0, 100);
-          $("chat-title").textContent = currentConversation.title;
-          renderConversations();
-        }
+        await consumeEvents(response, (item) => {
+          if (item.event === "message_start") {
+            content = "";
+            bubble.textContent = "Thinking…";
+          } else if (item.event === "delta") {
+            waiting.classList.remove("thinking");
+            content += item.text;
+            renderMarkdown(bubble, content);
+          } else if (item.event === "tool_start") {
+            const line = document.createElement("div");
+            line.textContent = toolLabel(item.name) + "…";
+            toolRows.set(item.id, line);
+            progress.appendChild(line);
+          } else if (item.event === "tool_end") {
+            const line = toolRows.get(item.id);
+            if (line) line.textContent = toolLabel(item.name) + (item.status === "error" ? " — failed" : " — complete");
+          } else if (item.event === "answer") {
+            content = item.content;
+            renderMarkdown(bubble, content);
+          } else if (item.event === "done" && item.title) {
+            currentConversation.title = item.title;
+            $("chat-title").textContent = item.title;
+            renderConversations();
+          }
+          $("messages").scrollTop = $("messages").scrollHeight;
+        });
       } catch (error) {
-        waiting.classList.remove("thinking");
-        waiting.querySelector(".bubble").textContent = `Error: ${error.message}`;
+        const failure = document.createElement("div");
+        failure.textContent = `Error: ${error.message}`;
+        progress.appendChild(failure);
+        if (!content) bubble.textContent = "Response interrupted.";
       } finally {
+        waiting.classList.remove("thinking");
+        sending = false;
         $("send").disabled = false;
+        $("new-chat").disabled = false;
+        $("attach").disabled = false;
+        $("logout").disabled = false;
         $("message").focus();
         loadFiles().catch(() => {});
       }
     };
+
+    function toolLabel(name) {
+      return ({ web_search: "Searching the web", run_python: "Running Python",
+        read_file: "Reading file", write_file: "Writing file",
+        save_memory: "Saving memory", rename_conversation: "Renaming conversation" })[name] || "Using tool";
+    }
+
+    async function consumeEvents(response, onEvent) {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let completed = false;
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          buffer += decoder.decode(value, { stream: !done });
+          let boundary;
+          while ((boundary = buffer.indexOf("\n\n")) !== -1) {
+            const frame = buffer.slice(0, boundary);
+            buffer = buffer.slice(boundary + 2);
+            const data = frame.split("\n").filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n");
+            if (!data) continue;
+            const item = JSON.parse(data);
+            if (item.event === "error") throw new Error(item.message);
+            onEvent(item);
+            if (item.event === "done") completed = true;
+          }
+          if (done) break;
+        }
+        if (!completed) throw new Error("Connection closed before the response finished. Reload the conversation before retrying.");
+      } finally {
+        await reader.cancel().catch(() => {});
+        reader.releaseLock();
+      }
+    }
 
     $("message").onkeydown = (event) => {
       if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); $("composer").requestSubmit(); }
@@ -618,6 +701,7 @@
     };
 
     async function renameConversation(conversation) {
+      if (sending) return;
       const title = prompt("Conversation title", conversation.title || "");
       if (!title?.trim()) return;
       const updated = await request(`/chat/conversations/${conversation.id}`, { method: "PATCH", body: JSON.stringify({ title }) });
@@ -627,6 +711,7 @@
     }
 
     async function deleteConversation(conversation) {
+      if (sending) return;
       if (!confirm("Delete this conversation?")) return;
       await request(`/chat/conversations/${conversation.id}`, { method: "DELETE" });
       conversationList = conversationList.filter((item) => item.id !== conversation.id);

@@ -41,3 +41,29 @@ All saved facts are loaded into the system context before each model call,
 including after tools run. They are not copied into conversation checkpoints.
 As memory grows, all entries consume model context; no retrieval filter or
 automatic pruning is applied.
+
+## Streaming and tool progress
+
+The chat UI uses `POST /api/v1/chat/conversations/{id}/messages/stream` with
+Bearer authentication and a JSON body: `{"message": "Hello"}`. The response is
+Server-Sent Events consumed through streaming `fetch`, so the usual token refresh
+works before streaming begins. The original JSON message endpoint is still available.
+
+Each frame has an `event:` field and JSON `data:` containing the same event name:
+
+- `message_start`: a model response begins; reset the current text buffer.
+- `delta`: append `text` to that buffer.
+- `tool_start` / `tool_end`: show tool `name` and correlate by `id`.
+  End events report `status` (`ok` or `error` when the tool returns an error-status message).
+  Tool arguments and results are excluded from progress events.
+- `answer`: the authoritative final `content`, also available from conversation history.
+- `done`: the turn completed, with an optional generated `title`.
+- `error`: a safe error `message`; the client should reload history before retrying.
+
+Tool progress reports start and completion rather than a percentage. Text from
+an intermediate model call is replaced when the next model response begins.
+The UI prevents conversation switching and duplicate sends during a turn.
+A disconnected client can leave a partial checkpoint; reload history before retrying.
+
+Run Python tests with `PYTHONPATH=src .venv/bin/python -m unittest discover -s tests`.
+Run the streaming parser tests with `node --test tests/test_streaming_ui.cjs`.

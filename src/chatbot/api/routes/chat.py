@@ -1,3 +1,8 @@
+import json
+import logging
+
+import anyio
+
 from typing import Annotated
 from uuid import UUID
 
@@ -12,7 +17,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import FileResponse as FileDownloadResponse
+from fastapi.responses import FileResponse as FileDownloadResponse, StreamingResponse
 from langchain_core.messages import AIMessage
 
 from chatbot.ai.agent import AgenticChatbot
@@ -31,6 +36,8 @@ from chatbot.schemas.chat import (
     SendMessageRequest,
 )
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -231,3 +238,51 @@ async def send_message(
         await tracer.persist()
     await conversations.touch(request.app.state.db, conversation_id, title)
     return MessageResponse(role="assistant", content=answer)
+
+
+@router.post("/conversations/{conversation_id}/messages/stream")
+async def stream_message(
+    conversation_id: UUID,
+    body: SendMessageRequest,
+    request: Request,
+    user: Annotated[User, Depends(get_current_user)],
+    chatbot: Annotated[AgenticChatbot, Depends(get_chatbot)],
+    title_generator: Annotated[TitleGenerator, Depends(get_title_generator)],
+) -> StreamingResponse:
+    conversation = await owned_conversation(request, conversation_id, user)
+
+    def encode(event):
+        return f"event: {event['event']}\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+    async def events():
+        tracer = PostgresTracer(request.app.state.db, user.id, conversation_id)
+        try:
+            async for event in chatbot.astream(
+                body.message, str(conversation_id),
+                context={
+                    "user_id": str(user.id),
+                    "conversation_id": str(conversation_id),
+                    "db": request.app.state.db,
+                },
+                callbacks=[tracer],
+            ):
+                yield encode(event)
+            title = None
+            if conversation.title is None:
+                try:
+                    title = await title_generator.ainvoke(body.message, callbacks=[tracer])
+                except Exception:
+                    logger.exception("stream_title_generation_failed")
+            await conversations.touch(request.app.state.db, conversation_id, title)
+            yield encode({"event": "done", "title": title})
+        except Exception:
+            logger.exception("chat_stream_failed conversation_id=%s", conversation_id)
+            yield encode({"event": "error", "message": "The response was interrupted. Please reload the conversation before retrying."})
+        finally:
+            with anyio.move_on_after(5, shield=True):
+                await tracer.persist()
+
+    return StreamingResponse(
+        events(), media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
