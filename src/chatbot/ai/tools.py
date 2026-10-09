@@ -158,22 +158,20 @@ async def rename_conversation(
 
 
 @tool
-async def save_memory(
-    key: str, content: str, runtime: ToolRuntime[ToolContext]
-) -> str:
-    """Remember a durable user fact or preference across conversations.
+async def save_memory(content: str, runtime: ToolRuntime[ToolContext]) -> str:
+    """Replace the user's complete Markdown memory document (like MEMORY.md).
 
-    Use a short stable key (such as preferred_language). Reuse the key to
-    replace an outdated fact. Save concise facts, never passwords or secrets.
+    Read the current document in your context, then supply the full revised text.
+    Preserve unrelated facts and preferences, correct outdated information, and
+    organize it with Markdown headings. Never save passwords or secrets.
+    Pass an empty string only when the user asks to clear all saved memory.
     """
     context = runtime.context
     try:
-        await memories.save(
-            context["db"], uuid.UUID(context["user_id"]), key, content
-        )
+        await memories.save(context["db"], uuid.UUID(context["user_id"]), content)
     except ValueError as exc:
         return str(exc)
-    return f"Saved memory: {key.strip()}."
+    return "Saved your updated memory document."
 
 
 assistant_tools = [

@@ -31,16 +31,31 @@ Alembic autogeneration.
 
 ## Long-term memory
 
-Apply `uv run alembic upgrade head` to create `user_memories`. The assistant's
-`save_memory(key, content)` tool stores facts in PostgreSQL for the authenticated
-user. Reusing a key replaces its previous value. Keys allow 100 characters and
-values allow 4,000 characters. Memory survives restarts and conversation deletion,
-and is shared across that user's conversations, never across users.
+Apply `uv run alembic upgrade head` to create or migrate `user_memories`.
+Each user has one PostgreSQL `TEXT` document, like a private `MEMORY.md`, with
+free-form Markdown containing preferences and useful personal information:
 
-All saved facts are loaded into the system context before each model call,
-including after tools run. They are not copied into conversation checkpoints.
-As memory grows, all entries consume model context; no retrieval filter or
-automatic pruning is applied.
+```markdown
+# About me
+I am a Python developer working on an agentic chatbot.
+
+# Preferences
+- Reply in Persian.
+- Explain concepts with small code examples.
+```
+
+The assistant's `save_memory(content)` tool replaces the complete document.
+It reads the existing document from context and supplies the revised text,
+preserving unrelated information and correcting outdated facts. Empty content
+clears the document; writes allow up to 50,000 characters. There are no memory
+keys or memory search. The document is stored in the database, not on disk.
+Existing key-value memories are migrated into Markdown sections without losing
+facts. Memory survives restarts and conversation deletion and is private to
+each user across their conversations.
+
+The full text is loaded before every model call, including after tools run,
+and is not copied into conversation checkpoints. All of it consumes model
+context; no retrieval filter or automatic pruning is applied.
 
 ## Streaming and tool progress
 

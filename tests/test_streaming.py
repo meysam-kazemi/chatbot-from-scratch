@@ -63,7 +63,7 @@ class StreamingAPITest(unittest.TestCase):
     def test_stream_and_best_effort_title(self):
         self.title.ainvoke.side_effect = RuntimeError("provider secret")
         with patch("chatbot.api.routes.chat.owned_conversation", AsyncMock(return_value=self.conversation)), patch(
-            "chatbot.ai.long_term_memory.memories.list_for_user", AsyncMock(return_value=[])
+            "chatbot.ai.long_term_memory.memories.get_for_user", AsyncMock(return_value="")
         ), patch("chatbot.api.routes.chat.conversations.touch", new_callable=AsyncMock) as touch, patch(
             "chatbot.api.routes.chat.PostgresTracer.persist", new_callable=AsyncMock
         ) as persist:
