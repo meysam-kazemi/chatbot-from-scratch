@@ -17,7 +17,7 @@ class DatabaseTest(unittest.TestCase):
         )
         self.assertEqual(
             set(Base.metadata.tables),
-            {"users", "refresh_tokens", "conversations", "traces"},
+            {"users", "refresh_tokens", "conversations", "traces", "user_memories"},
         )
 
 

@@ -9,7 +9,7 @@ from langchain.tools import ToolRuntime, tool
 
 from chatbot.config import settings
 from chatbot.db.database import SessionFactory
-from chatbot.repositories import conversations
+from chatbot.repositories import conversations, memories
 from chatbot.repositories.files import safe_path, workspace
 
 
@@ -157,7 +157,27 @@ async def rename_conversation(
     return "Conversation not found."
 
 
+@tool
+async def save_memory(
+    key: str, content: str, runtime: ToolRuntime[ToolContext]
+) -> str:
+    """Remember a durable user fact or preference across conversations.
+
+    Use a short stable key (such as preferred_language). Reuse the key to
+    replace an outdated fact. Save concise facts, never passwords or secrets.
+    """
+    context = runtime.context
+    try:
+        await memories.save(
+            context["db"], uuid.UUID(context["user_id"]), key, content
+        )
+    except ValueError as exc:
+        return str(exc)
+    return f"Saved memory: {key.strip()}."
+
+
 assistant_tools = [
+    save_memory,
     web_search,
     run_python,
     read_file,

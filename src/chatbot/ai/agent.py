@@ -11,6 +11,7 @@ from langchain_core.tools import BaseTool
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
 
+from chatbot.ai.long_term_memory import LongTermMemoryMiddleware
 from chatbot.ai.model import get_chat_model
 from chatbot.ai.tools import ToolContext
 
@@ -21,6 +22,9 @@ SYSTEM_PROMPT = (
     .joinpath("agent_prompt.md")
     .read_text(encoding="utf-8")
 )
+
+DEFAULT_SYSTEM_PROMPT = SYSTEM_PROMPT
+
 
 class AgenticChatbot:
     def __init__(
@@ -37,6 +41,7 @@ class AgenticChatbot:
             system_prompt=system_prompt,
             checkpointer=self.checkpointer,
             context_schema=ToolContext,
+            middleware=[LongTermMemoryMiddleware()],
         )
 
     def invoke(

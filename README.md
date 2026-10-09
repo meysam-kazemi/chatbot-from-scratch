@@ -28,3 +28,16 @@ Review the generated `upgrade()` and `downgrade()` functions, then run
 `uv run alembic upgrade head`. Application queries use async SQLAlchemy
 sessions, and the models in `src/chatbot/db/models/` are the source for
 Alembic autogeneration.
+
+## Long-term memory
+
+Apply `uv run alembic upgrade head` to create `user_memories`. The assistant's
+`save_memory(key, content)` tool stores facts in PostgreSQL for the authenticated
+user. Reusing a key replaces its previous value. Keys allow 100 characters and
+values allow 4,000 characters. Memory survives restarts and conversation deletion,
+and is shared across that user's conversations, never across users.
+
+All saved facts are loaded into the system context before each model call,
+including after tools run. They are not copied into conversation checkpoints.
+As memory grows, all entries consume model context; no retrieval filter or
+automatic pruning is applied.
