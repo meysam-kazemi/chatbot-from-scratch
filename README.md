@@ -44,7 +44,16 @@ I am a Python developer working on an agentic chatbot.
 - Explain concepts with small code examples.
 ```
 
-The assistant's `save_memory(content)` tool replaces the complete document.
+Before each production chat turn, a separate structured LLM call extracts durable
+facts and preferences from the latest user message, using recent conversation
+for context. It returns a validated `MemoryUpdate`: a complete revised Markdown
+document, or `null` for no change. Changed documents are committed to PostgreSQL
+before the assistant answers. This adds one LLM call per turn; the default uses
+`AI_MODEL` and its timeout/token settings. Extraction or persistence failures
+fail the turn rather than claiming that information was saved. Memory extraction
+output is excluded from chat streaming events.
+
+The assistant's `save_memory(content)` tool also replaces the complete document.
 It reads the existing document from context and supplies the revised text,
 preserving unrelated information and correcting outdated facts. Empty content
 clears the document; writes allow up to 50,000 characters. There are no memory
@@ -56,6 +65,35 @@ each user across their conversations.
 The full text is loaded before every model call, including after tools run,
 and is not copied into conversation checkpoints. All of it consumes model
 context; no retrieval filter or automatic pruning is applied.
+
+## Structured LLM output
+
+Titles use a validated `ConversationTitle` schema with provider JSON Schema
+output. Automatic memory extraction uses the same mechanism with `MemoryUpdate`.
+Normal chat replies remain streamed Markdown. For programmatic agents, pass a
+Pydantic model (or LangChain response strategy) as `response_format`:
+
+```python
+from pydantic import BaseModel
+from chatbot.ai.agent import AgenticChatbot
+
+class Answer(BaseModel):
+    summary: str
+    next_steps: list[str]
+
+agent = AgenticChatbot(response_format=Answer)
+result = await agent.ainvoke("Explain how this project stores memory")
+print(result.summary)
+```
+
+`invoke` and `ainvoke` return the validated structured response when configured.
+LangChain selects provider-native output or a tool strategy according to model
+capabilities. Structured streaming buffers the result until validation succeeds,
+then emits JSON as a single `delta` and the final `answer`, avoiding partial JSON.
+When injecting your own chat `model`, also pass `memory_model` to enable automatic
+memory extraction; it must support `with_structured_output`. Both memory paths
+require runtime context containing `user_id`, `conversation_id`, and the database
+session factory. The API supplies this context automatically.
 
 ## Streaming and tool progress
 

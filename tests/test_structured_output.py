@@ -1,6 +1,6 @@
 import asyncio
 import unittest
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 from langchain_core.messages import AIMessage
 from pydantic import BaseModel, ValidationError
@@ -15,6 +15,18 @@ class Answer(BaseModel):
 
 
 class StructuredOutputTest(unittest.IsolatedAsyncioTestCase):
+    def test_default_agent_enables_structured_memory_extraction(self):
+        from chatbot.ai.long_term_memory import MemoryUpdate
+        model = Mock()
+        with patch("chatbot.ai.agent.get_chat_model", return_value=model), patch(
+            "chatbot.ai.agent.create_agent"
+        ) as create:
+            AgenticChatbot()
+        model.with_structured_output.assert_called_once_with(
+            MemoryUpdate, method="json_schema", strict=True
+        )
+        self.assertIs(create.call_args.kwargs["model"], model)
+
     async def test_title_uses_schema_and_preserves_callbacks(self):
         model = Mock()
         structured = model.with_structured_output.return_value
