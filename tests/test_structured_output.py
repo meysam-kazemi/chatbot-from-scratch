@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 from unittest.mock import AsyncMock, Mock
 
@@ -42,7 +43,7 @@ class StructuredOutputTest(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_typed_agent_sync_async_and_stream(self):
-        self.assertEqual(self.make_chatbot().invoke("Hi"), Answer(answer="Hello"))
+        self.assertEqual(await asyncio.to_thread(self.make_chatbot().invoke, "Hi"), Answer(answer="Hello"))
         self.assertEqual(await self.make_chatbot().ainvoke("Hi"), Answer(answer="Hello"))
         events = [e async for e in self.make_chatbot().astream("Hi")]
         self.assertEqual(events[-1], {'event': 'answer', 'content': '{"answer":"Hello"}'})
