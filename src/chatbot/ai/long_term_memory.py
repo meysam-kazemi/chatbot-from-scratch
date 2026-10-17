@@ -9,6 +9,9 @@ from chatbot.repositories import memories
 
 
 class LongTermMemoryMiddleware(AgentMiddleware):
+    def __init__(self, model=None):
+        self.model = model
+
     async def _with_memory(self, request):
         context = request.runtime.context
         if not context or context.get("db") is None:

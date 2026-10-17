@@ -1,4 +1,5 @@
 import asyncio
+import json
 from collections.abc import AsyncIterator, Callable, Sequence
 from typing import Any
 from importlib.resources import files
@@ -33,7 +34,10 @@ class AgenticChatbot:
         tools: Sequence[Tool] = (),
         system_prompt: str = SYSTEM_PROMPT,
         checkpointer: BaseCheckpointSaver | None = None,
+        response_format: Any = None,
+        memory_model: BaseChatModel | None = None,
     ) -> None:
+        self.response_format = response_format
         self.checkpointer = checkpointer or InMemorySaver()
         self.agent = create_agent(
             model=model or get_chat_model(),
@@ -41,7 +45,8 @@ class AgenticChatbot:
             system_prompt=system_prompt,
             checkpointer=self.checkpointer,
             context_schema=ToolContext,
-            middleware=[LongTermMemoryMiddleware()],
+            middleware=[LongTermMemoryMiddleware(model=memory_model)],
+            response_format=response_format,
         )
 
     def invoke(
@@ -49,7 +54,7 @@ class AgenticChatbot:
         conversation_id: str = "default",
         context: ToolContext | None = None,
         callbacks: Callbacks = None,
-        ) -> str:
+        ) -> Any:
         if not message.strip():
             raise ValueError("message cannot be empty")
 
@@ -61,7 +66,7 @@ class AgenticChatbot:
             config=config,
             context=context,
         )
-        return result["messages"][-1].content
+        return result.get("structured_response", result["messages"][-1].content)
 
     async def aget_messages(self, conversation_id: str) -> list[BaseMessage]:
         state = await self.agent.aget_state(
@@ -83,7 +88,7 @@ class AgenticChatbot:
         conversation_id: str = "default",
         context: ToolContext | None = None,
         callbacks: Callbacks = None,
-    ) -> str:
+    ) -> Any:
         if not message.strip():
             raise ValueError("message cannot be empty")
 
@@ -95,7 +100,7 @@ class AgenticChatbot:
             config=config,
             context=context,
         )
-        return result["messages"][-1].content
+        return result.get("structured_response", result["messages"][-1].content)
 
 
     async def astream(
@@ -120,7 +125,7 @@ class AgenticChatbot:
                 yield {"event": "message_start"}
             elif kind == "on_chat_model_stream":
                 text = event["data"]["chunk"].text
-                if text:
+                if text and self.response_format is None:
                     yield {"event": "delta", "text": text}
             elif kind in {"on_tool_start", "on_tool_end"}:
                 output = event["data"].get("output")
@@ -132,7 +137,13 @@ class AgenticChatbot:
                 }
             elif kind == "on_chain_end" and not event.get("parent_ids"):
                 output = event["data"]["output"]
-                yield {"event": "answer", "content": output["messages"][-1].text}
+                response = output.get("structured_response")
+                if response is not None:
+                    content = response.model_dump_json() if hasattr(response, "model_dump_json") else json.dumps(response)
+                    yield {"event": "delta", "text": content}
+                else:
+                    content = output["messages"][-1].text
+                yield {"event": "answer", "content": content}
 
 
 async def demo() -> None:

@@ -1,4 +1,6 @@
 from importlib.resources import files
+from pydantic import BaseModel, Field, field_validator
+
 from langchain_core.callbacks.manager import Callbacks
 from langchain_core.language_models import BaseChatModel
 
@@ -11,13 +13,24 @@ SYSTEM_PROMPT = (
     .read_text(encoding="utf-8")
 )
 
+class ConversationTitle(BaseModel):
+    title: str = Field(min_length=1, max_length=100, description="Concise conversation title in the user's language")
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def strip_title(cls, value: str) -> str:
+        return value.strip()
+
+
 class TitleGenerator:
     def __init__(
         self,
         model: BaseChatModel | None = None,
         system_prompt: str = SYSTEM_PROMPT,
     ):
-        self.model = model or get_title_model()
+        self.model = (model or get_title_model()).with_structured_output(
+            ConversationTitle, method="json_schema", strict=True
+        )
         self.system_prompt = system_prompt
     
     def invoke(self, message: str) -> str:
@@ -35,7 +48,7 @@ class TitleGenerator:
                 },
             ]
         )
-        return response.text.strip()[:100]
+        return response.title
     
     async def ainvoke(self, message: str, callbacks: Callbacks = None) -> str:
         if not message.strip():
@@ -55,7 +68,7 @@ class TitleGenerator:
             config=config,
         )
 
-        return response.text.strip()[:100]
+        return response.title
 
         
 if __name__=="__main__":
