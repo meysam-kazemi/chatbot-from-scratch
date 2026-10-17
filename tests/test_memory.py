@@ -79,3 +79,75 @@ class MemoryTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await memories.get_for_user(factory, uuid.uuid4()), "")
         await memories.save(factory, uuid.uuid4(), "")
         self.assertEqual(session.execute.call_args.args[0].compile().params["content"], "")
+
+
+class AutomaticMemoryTest(unittest.IsolatedAsyncioTestCase):
+    async def test_automatic_write_reaches_next_conversation_and_stays_out_of_stream(self):
+        from unittest.mock import Mock
+        from langchain_core.language_models.fake_chat_models import FakeListChatModel
+        from langchain_core.output_parsers import PydanticOutputParser
+        from chatbot.ai.long_term_memory import MemoryUpdate
+
+        document = '# Preferences\n- Reply in Persian.'
+        extraction = FakeListChatModel(responses=[
+            '{"document": "# Preferences\\n- Reply in Persian."}',
+            '{"document": null}',
+        ]) | PydanticOutputParser(pydantic_object=MemoryUpdate)
+        memory_model = Mock()
+        memory_model.with_structured_output.return_value = extraction
+        context = {'user_id': str(uuid.uuid4()), 'conversation_id': 'one', 'db': object()}
+        stored = ''
+        async def load(*args):
+            return stored
+        async def save(db, user_id, content):
+            nonlocal stored
+            stored = content
+        captured = []
+        original = ToolCallingFakeModel._agenerate
+        async def capture(instance, messages, **kwargs):
+            captured.append(messages[0].text)
+            return await original(instance, messages, **kwargs)
+        with patch('chatbot.repositories.memories.get_for_user', side_effect=load), patch(
+            'chatbot.repositories.memories.save', side_effect=save
+        ) as persist, patch.object(ToolCallingFakeModel, '_agenerate', capture):
+            chatbot = AgenticChatbot(
+                model=ToolCallingFakeModel(responses=[AIMessage(content='Done'), AIMessage(content='Persian')]),
+                memory_model=memory_model,
+            )
+            events = [e async for e in chatbot.astream('I prefer Persian replies', 'one', context)]
+            self.assertEqual(stored, document)
+            self.assertNotIn('document', str(events))
+            self.assertNotIn('# Preferences', str(events))
+            self.assertIn(document, captured[0])
+            await chatbot.ainvoke('What is my language?', 'two', {**context, 'conversation_id': 'two'})
+            self.assertIn(document, captured[1])
+            persist.assert_awaited_once_with(context['db'], uuid.UUID(context['user_id']), document)
+            memory_model.with_structured_output.assert_called_once_with(
+                MemoryUpdate, method='json_schema', strict=True
+            )
+
+    async def test_noop_clear_and_failed_write(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from langchain_core.messages import HumanMessage
+        from chatbot.ai.long_term_memory import LongTermMemoryMiddleware, MemoryUpdate
+
+        model = Mock()
+        updater = model.with_structured_output.return_value
+        updater.ainvoke = AsyncMock()
+        middleware = LongTermMemoryMiddleware(model=model)
+        runtime = SimpleNamespace(context={'db': object(), 'user_id': str(uuid.uuid4())})
+        state = {'messages': [HumanMessage(content='Forget everything')]}
+        with patch('chatbot.repositories.memories.get_for_user', AsyncMock(return_value='old')), patch(
+            'chatbot.repositories.memories.save', new_callable=AsyncMock
+        ) as save:
+            for value in (None, 'old'):
+                updater.ainvoke.return_value = MemoryUpdate(document=value)
+                await middleware.abefore_agent(state, runtime)
+            save.assert_not_awaited()
+            updater.ainvoke.return_value = MemoryUpdate(document='')
+            await middleware.abefore_agent(state, runtime)
+            self.assertEqual(save.await_args.args[-1], '')
+            save.side_effect = RuntimeError('database unavailable')
+            with self.assertRaises(RuntimeError):
+                await middleware.abefore_agent(state, runtime)

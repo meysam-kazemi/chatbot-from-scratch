@@ -37,10 +37,13 @@ class AgenticChatbot:
         response_format: Any = None,
         memory_model: BaseChatModel | None = None,
     ) -> None:
+        chat_model = model or get_chat_model()
+        if model is None and memory_model is None:
+            memory_model = chat_model
         self.response_format = response_format
         self.checkpointer = checkpointer or InMemorySaver()
         self.agent = create_agent(
-            model=model or get_chat_model(),
+            model=chat_model,
             tools=tools,
             system_prompt=system_prompt,
             checkpointer=self.checkpointer,
@@ -120,6 +123,8 @@ class AgenticChatbot:
             {"messages": [{"role": "user", "content": message}]},
             config=config, context=context, version="v2",
         ):
+            if "memory_extraction" in event.get("tags", []):
+                continue
             kind = event["event"]
             if kind == "on_chat_model_start":
                 yield {"event": "message_start"}
